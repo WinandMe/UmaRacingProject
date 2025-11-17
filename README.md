@@ -34,10 +34,10 @@ See `/experimental/` for newer versions with major changes:
 
 ## 📁 Project Structure
 UmaRacingProject/
-├── src/ # Current stable versions
-├── experimental/ # Active development
-├── archive/ # Historical versions
-└── docs/ # Documentation
+**├── src/ # Current stable versions**
+**├── experimental/ # Active development**
+**├── archive/ # Historical versions**
+**└── docs/ # Documentation**
 
 ## 📋 Requirements
 See `requirements.txt` for Python dependencies.
