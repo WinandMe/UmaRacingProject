@@ -2,6 +2,8 @@
 
 **(Disclaimer: I know some of those codes are AI assisted due to myself as beginner. this project came as fruitation as I love Uma Musume and with a particular roleplaying subreddit who wanted a race mechanism. any crititcs and suggestion are highly appreciated, and I hope we can keep discussion in civil)**
 
+**Currently in hiatus for indefinite. please do not message me directly unless if necessary**
+
 A Python-based racing simulator for Uma Musume, featuring a GUI interface and configuration generator.
 
 
