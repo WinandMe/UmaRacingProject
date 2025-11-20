@@ -86,11 +86,29 @@ Distribute copies
 Incorporate the project into your own work, including commercial products
 
 The only requirement is that a copy of the MIT License text is included with any distribution.
+
 Please note that the software is provided “as is”, without any warranty or guarantee.
+
+it means, The author is not responsible for damages, bugs, or issues caused by modified versions of this software.
+
 
 ## Roleplay and Usage Disclaimer
 
-The Uma Racing Simulator is designed purely for entertainment, roleplaying, and hobbyist use. Race results and commentary are fictional.
+
+By using this simulator, you acknowledge the following:
+
+
+* This project is not intended for real betting, wagering, or competitive financial systems.
+
+* Race results are not deterministic, and may not reflect balanced or realistic simulations.
+
+* The simulator is meant for fun, creativity, and storytelling, not serious analytical purposes.
+
+* The author is not responsible for misuse of the simulator outside its intended roleplay context.
+
+
+If you use this tool in a community event, you are responsible for ensuring it aligns with your group's rules and expectations.
+
 
 ## Project Status (November 2025)
 
