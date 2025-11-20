@@ -1,46 +1,76 @@
 # Uma Racing Simulator
 
-**(Disclaimer: I know some of those codes are AI assisted due to myself as beginner. this project came as fruitation as I love Uma Musume and with a particular roleplaying subreddit who wanted a race mechanism. any crititcs and suggestion are highly appreciated, and I hope we can keep discussion in civil)**
+A Python-based racing simulator inspired by Uma Musume, featuring a graphical interface, customizable race parameters, detailed commentary generation, and aptitude-based race calculations.
 
-**Currently in hiatus for indefinite. please do not message me directly unless if necessary**
+Note: Portions of this project were developed using AI-assisted coding, as the author is still learning. Constructive feedback and contributions are always welcome.
 
-A Python-based racing simulator for Uma Musume, featuring a GUI interface and configuration generator.
+## Overview
 
+The Uma Racing Simulator provides a complete toolset for creating and running simulated races for roleplay or community events, including:
 
-## Features
-- Race simulation with customizable parameters
-- Detailed commentary generation
-- Distance/surface aptitude calculations
-- Human-readable race results with margins
-- GUI interface for easy operation
-- Configuration generator for Uma setup
+- Customizable race settings
+- Automated commentary output
+- Aptitude and performance calculations
+- Human-readable result formatting
+- A graphical user interface
+- A configuration generator for runners
+
+This project was originally created for community hobby purposes and remains open for future extension.
+
+## Project Structure
+
+UmaRacingProject/
+├── src/                   # Stable, production-ready versions
+│   ├── UmaRacingGUI.py             # Primary GUI simulator (V3)
+│   └── UmaConfigGenerator.py       # Compatible configuration generator
+├── experimental/          # In-development versions (V4+ prototypes)
+│   └── ...                # Mechanism overhauls, new skill systems, rewrites
+├── archive/               # Older versions and historical snapshots
+└── docs/                  # Documentation
+
+## Quick Start
+
+For stable and verified builds, use:
+
+- src/UmaRacingGUI.py
+- src/UmaConfigGenerator.py
+
+These represent the most reliable and internally compatible versions of the simulator.
+
+## Experimental Versions
+
+The experimental/ directory contains active development branches with:
+
+- Version 4 prototypes
+- Updated calculation logic
+- Expanded skill sets
+- System redesigns
+
+These versions may contain untested mechanics or breaking changes. Use them at your own discretion.
 
 ## Requirements
 
-- **Python 3.6 or higher** (for f-strings and modern features)
-- No additional packages needed! 🎉
+- Python 3.6+
+- No external packages required.
 
-# Uma Racing Project
+## License
 
-A comprehensive horse racing simulation and configuration tool.
+This project is distributed under the MIT License.
 
-## 🎯 Quick Start
-For stable, tested versions, use the files in `/src/`:
-- `src/UmaRacingGUI.py` - Main racing simulator (V3, most tested)
-- `src/UmaConfigGenerator.py` - Race configurator (compatible with all versions)
+## Roleplay and Usage Disclaimer
 
-## 🔬 Experimental Versions
-See `/experimental/` for newer versions with major changes:
-- V4 versions with overhauled racing mechanisms
-- New config generators with skill lists
+The Uma Racing Simulator is designed purely for entertainment, roleplaying, and hobbyist use. Race results and commentary are fictional.
 
-## 📁 Project Structure
-UmaRacingProject/
-src/ # Current stable versions
-experimental/ # Active development
-archive/ # Historical versions
-docs/ # Documentation
+## Project Status (November 2025)
 
-## 📋 Requirements
-See `requirements.txt` for Python dependencies.
+The author is currently taking a break from active development. Community members may continue contributing.
 
+## Contributions
+
+1. Open an Issue.
+2. Submit a Pull Request.
+3. Use clear coding practices.
+
+## Contact
+
+For project-related communication, please use GitHub Issues."""
