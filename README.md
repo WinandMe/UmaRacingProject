@@ -75,6 +75,19 @@ These versions may contain untested mechanics or breaking changes. Use them at y
 
 This project is distributed under the MIT License.
 
+Under this license, you may:
+
+Use the software for any purpose
+
+Modify the source code
+
+Distribute copies
+
+Incorporate the project into your own work, including commercial products
+
+The only requirement is that a copy of the MIT License text is included with any distribution.
+Please note that the software is provided “as is”, without any warranty or guarantee.
+
 ## Roleplay and Usage Disclaimer
 
 The Uma Racing Simulator is designed purely for entertainment, roleplaying, and hobbyist use. Race results and commentary are fictional.
