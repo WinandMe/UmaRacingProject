@@ -8,32 +8,50 @@ Note: Portions of this project were developed using AI-assisted coding, as the a
 
 The Uma Racing Simulator provides a complete toolset for creating and running simulated races for roleplay or community events, including:
 
-- Customizable race settings
-- Automated commentary output
-- Aptitude and performance calculations
-- Human-readable result formatting
-- A graphical user interface
-- A configuration generator for runners
+* Customizable race settings
+* Automated commentary output
+* Aptitude and performance calculations
+* Human-readable result formatting
+* A graphical user interface
+* A configuration generator for runners
 
 This project was originally created for community hobby purposes and remains open for future extension.
 
-## Project Structure
+Project Structure
+
+---
+
+```txt
 
 UmaRacingProject/
-├── src/                   # Stable, production-ready versions
-│   ├── UmaRacingGUI.py             # Primary GUI simulator (V3)
-│   └── UmaConfigGenerator.py       # Compatible configuration generator
-├── experimental/          # In-development versions (V4+ prototypes)
-│   └── ...                # Mechanism overhauls, new skill systems, rewrites
-├── archive/               # Older versions and historical snapshots
-└── docs/                  # Documentation
 
-## Quick Start
+├── src/ # Stable, production-ready versions
+
+│ ├── UmaRacingGUI.py # Primary GUI simulator (V3)
+
+│ └── UmaConfigGenerator.py # Compatible configuration generator
+
+│
+
+├── experimental/ # In-development versions (V4+ prototypes)
+
+│ └── ... # Mechanism overhauls, new skill systems, rewrites
+
+│
+
+├── archive/ # Older versions and historical snapshots
+
+│
+
+└── docs/ # Documentation
+
+```
+Quick Start
 
 For stable and verified builds, use:
 
-- src/UmaRacingGUI.py
-- src/UmaConfigGenerator.py
+* src/UmaRacingGUI.py
+* src/UmaConfigGenerator.py
 
 These represent the most reliable and internally compatible versions of the simulator.
 
@@ -41,17 +59,17 @@ These represent the most reliable and internally compatible versions of the simu
 
 The experimental/ directory contains active development branches with:
 
-- Version 4 prototypes
-- Updated calculation logic
-- Expanded skill sets
-- System redesigns
+* Version 4 prototypes
+* Updated calculation logic
+* Expanded skill sets
+* System redesigns
 
 These versions may contain untested mechanics or breaking changes. Use them at your own discretion.
 
 ## Requirements
 
-- Python 3.6+
-- No external packages required.
+* Python 3.6+
+* No external packages required.
 
 ## License
 
@@ -74,3 +92,4 @@ The author is currently taking a break from active development. Community member
 ## Contact
 
 For project-related communication, please use GitHub Issues."""
+
