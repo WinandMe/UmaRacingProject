@@ -110,7 +110,7 @@ Use only if you're comfortable with experimentation.
 ## 📦 Requirements
 
 -   **Python 3.6+**
--   No external dependencies required
+-   **PySide6** in order to wrk for the newest update
 
 Everything runs with the Python standard library.
 
@@ -163,19 +163,6 @@ The author is not responsible for:
 -   These restrictions describe intended use and community expectations, but they do not alter the rights granted by the MIT License.
 ------------------------------------------------------------------------
 
-
-## 📌 Project Status (Updated: November 2025)
-
-The author is currently on a development break.\
-Community members are free to:
-
--   Fork the repository
--   Submit issues
--   Submit pull requests
--   Propose features or refinements
-
-------------------------------------------------------------------------
-
 ## 🤝 Contributions
 
 To contribute:
@@ -196,81 +183,3 @@ This helps keep discussions public, transparent, and organized.
 ------------------------------------------------------------------------
 
 Thank you for using the Uma Racing Simulator --- and have fun racing!
-Quick Start
-
-For stable and verified builds, use:
-
-* src/UmaRacingGUI.py
-* src/UmaConfigGenerator.py
-
-These represent the most reliable and internally compatible versions of the simulator.
-
-## Experimental Versions
-
-The experimental/ directory contains active development branches with:
-
-* Version 4 prototypes
-* Updated calculation logic
-* Expanded skill sets
-* System redesigns
-
-These versions may contain untested mechanics or breaking changes. Use them at your own discretion.
-
-## Requirements
-
-* Python 3.6+
-* No external packages required.
-
-## License
-
-This project is distributed under the MIT License.
-
-Under this license, you may:
-
-Use the software for any purpose
-
-Modify the source code
-
-Distribute copies
-
-Incorporate the project into your own work, including commercial products
-
-The only requirement is that a copy of the MIT License text is included with any distribution.
-
-Please note that the software is provided “as is”, without any warranty or guarantee.
-
-it means, The author is not responsible for damages, bugs, or issues caused by modified versions of this software.
-
-
-## Roleplay and Usage Disclaimer
-
-
-By using this simulator, you acknowledge the following:
-
-
-* This project is not intended for real betting, wagering, or competitive financial systems.
-
-* Race results are not deterministic, and may not reflect balanced or realistic simulations.
-
-* The simulator is meant for fun, creativity, and storytelling, not serious analytical purposes.
-
-* The author is not responsible for misuse of the simulator outside its intended roleplay context.
-
-
-If you use this tool in a community event, you are responsible for ensuring it aligns with your group's rules and expectations.
-
-
-## Project Status (November 2025)
-
-The author is currently taking a break from active development. Community members may continue contributing.
-
-## Contributions
-
-1. Open an Issue.
-2. Submit a Pull Request.
-3. Use clear coding practices.
-
-## Contact
-
-For project-related communication, please use GitHub Issues."""
-

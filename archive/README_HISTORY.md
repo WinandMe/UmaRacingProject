@@ -18,6 +18,12 @@ This directory contains historical versions of the Uma Racing Project for refere
   - Improvements to the original GUI interface
   - Better user experience and additional features
 
+### `/v3_tkinter/` - last release of tkinter based UI 
+
+- **UmaRacingGUI_V3.py** - last tkinter before switch to PySide6
+  - adding better cornering mechanism to the sim
+  - track indicator still straight, might implement it later
+
 ## 🚀 Version Evolution
 
 ### Generation 1 (Archived)

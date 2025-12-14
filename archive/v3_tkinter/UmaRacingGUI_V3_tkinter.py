@@ -1,151 +1,11 @@
+import tkinter as tk
+from tkinter import ttk, scrolledtext, filedialog, messagebox
 import json
 import math
 import random
 from datetime import datetime
-from pathlib import Path
 
-from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QComboBox, QLabel, QFileDialog, QTextEdit, QSplitter,
-    QFrame, QMessageBox
-)
-from PySide6.QtCore import Qt, QTimer, QSize, QPoint
-from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush
-
-
-class RaceCanvasWidget(QWidget):
-    """Custom widget for rendering race track and umas"""
-    
-    def __init__(self):
-        super().__init__()
-        self.sim_data = None
-        self.uma_distances = {}
-        self.track_margin = 80
-        self.uma_finished = {}
-        self.uma_dnf = {}
-        self.uma_incidents = {}
-        self.uma_colors = {}
-        self.gate_numbers = {}
-    
-    def paintEvent(self, event):
-        """Paint the race track"""
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        w = self.width()
-        h = self.height()
-        if w <= 1:
-            w = 800
-        if h <= 1:
-            h = 80
-        
-        track_y = h // 2
-        
-        # Draw track line
-        pen = QPen(QColor('#a0d8e0'), 4)
-        painter.setPen(pen)
-        painter.drawLine(self.track_margin, track_y, w - self.track_margin, track_y)
-        
-        # Draw START label
-        font = QFont("Arial", 12)
-        font.setBold(True)
-        painter.setFont(font)
-        painter.setPen(QPen(QColor('white')))
-        painter.drawText(self.track_margin - 60, track_y - 10, 60, 20, Qt.AlignmentFlag.AlignCenter, "START")
-        
-        # Draw FINISH label
-        painter.drawText(w - self.track_margin, track_y - 10, 60, 20, Qt.AlignmentFlag.AlignCenter, "FINISH")
-        
-        # Draw umas if data available
-        if self.sim_data and self.uma_distances:
-            track_width = w - 2 * self.track_margin
-            race_distance = self.sim_data.get('race_distance', 2500)
-            
-            # Sort umas by distance for position-based offset
-            sorted_umas = sorted(self.uma_distances.items(), key=lambda x: x[1], reverse=True)
-            
-            # Group umas by proximity to avoid overlapping
-            uma_groups = []
-            current_group = []
-            last_x = -999
-            
-            for name, distance in sorted_umas:
-                if race_distance > 0:
-                    progress = min(distance / race_distance, 1.0)
-                    x_pos = self.track_margin + progress * track_width
-                    
-                    # If uma is far from last one (>25px), start new group
-                    if abs(x_pos - last_x) > 25:
-                        if current_group:
-                            uma_groups.append(current_group)
-                        current_group = [(name, distance, x_pos)]
-                        last_x = x_pos
-                    else:
-                        current_group.append((name, distance, x_pos))
-            
-            if current_group:
-                uma_groups.append(current_group)
-            
-            # Draw umas with vertical offset in groups
-            ball_radius = 10 if len(self.uma_distances) > 10 else 14
-            
-            for group in uma_groups:
-                group_size = len(group)
-                for idx, (name, distance, x_pos) in enumerate(group):
-                    # Calculate vertical offset based on position in group
-                    if group_size == 1:
-                        y_offset = 0
-                    else:
-                        # Spread within ±15 pixels
-                        y_offset = (idx - (group_size - 1) / 2.0) * (30 / max(group_size, 2))
-                    
-                    y_pos = track_y + y_offset
-                    
-                    # Determine color based on status
-                    if self.uma_finished.get(name, False):
-                        color = QColor('#FFD700')  # Gold for finished
-                        outline = QColor('white')
-                    elif self.uma_dnf.get(name, {}).get('dnf', False):
-                        color = QColor('#333333')  # Gray for DNF
-                        outline = QColor('white')
-                    elif self.uma_incidents.get(name, {}).get('type'):
-                        color = QColor('#FF6600')  # Orange for incident
-                        outline = QColor('white')
-                    else:
-                        color = QColor(self.uma_colors.get(name, '#fdbf24'))
-                        outline = QColor('#c89600')
-                    
-                    # Draw uma circle
-                    painter.setBrush(QBrush(color))
-                    painter.setPen(QPen(outline, 2))
-                    painter.drawEllipse(int(x_pos - ball_radius), int(y_pos - ball_radius), 
-                                       ball_radius * 2, ball_radius * 2)
-                    
-                    # Draw participant number inside circle
-                    gate_num = self.gate_numbers.get(name, '?')
-                    font = QFont("Arial", 10)
-                    font.setBold(True)
-                    painter.setFont(font)
-                    painter.setPen(QPen(QColor('black')))
-                    painter.drawText(int(x_pos - ball_radius), int(y_pos - ball_radius), 
-                                    ball_radius * 2, ball_radius * 2, 
-                                    Qt.AlignmentFlag.AlignCenter, str(gate_num))
-    
-    def update_display(self, sim_data, uma_distances, uma_finished, uma_dnf, 
-                      uma_incidents, uma_colors, gate_numbers, track_margin):
-        """Update display data"""
-        self.sim_data = sim_data
-        self.uma_distances = uma_distances
-        self.uma_finished = uma_finished
-        self.uma_dnf = uma_dnf
-        self.uma_incidents = uma_incidents
-        self.uma_colors = uma_colors
-        self.gate_numbers = gate_numbers
-        self.track_margin = track_margin
-        self.update()
-
-
-class UmaRacingGUI(QMainWindow):
+class UmaRacingGUI(tk.Tk):
     def __init__(self):
         super().__init__()
 
@@ -153,6 +13,7 @@ class UmaRacingGUI(QMainWindow):
         self.sim_running = False
         self.sim_data = None
         self.sim_time = 0.0
+        self.sim_after_id = None
         self.fired_event_seconds = set()
         self.uma_icons = {}
         self.track_margin = 80
@@ -177,11 +38,13 @@ class UmaRacingGUI(QMainWindow):
         self.uma_stamina = {}
         self.uma_dnf = {}
         
-        # === ENHANCED: Dueling system variables ===
-        self.uma_duels = {}  # Track active duels between umas
-        self.duel_history = []  # History of duels that occurred
-        self.uma_last_spurt_duel = {}  # Track umas in last spurt duel mode
-        self.last_spurt_duels_activated = set()  # Track which umas have activated last spurt duels
+        # === BARU: Variabel dueling ===
+        self.duel_active = False
+        self.duel_participants = set()
+        self.duel_start_time = 0
+        self.duel_commentary_made = False
+        self.duel_guts_used = {}  # Track who used guts for dueling
+        self.duel_stamina_boost_used = {}  # Track stamina boosts
 
         # Commentary tracking
         self.distance_callouts_made = set()
@@ -192,6 +55,26 @@ class UmaRacingGUI(QMainWindow):
         self.dnf_commented = set()
         self.finish_commented = set()
         self.commentary_history = []
+        
+        # === BARU: Komentar dueling ===
+        self.duel_commentary_lines = [
+            "And now we have dueling between {name1} and {name2}!",
+            "What a battle! {name1} and {name2} are going head to head!",
+            "Incredible! {name1} and {name2} are locked in combat!",
+            "The crowd goes wild as {name1} and {name2} duel for position!",
+            "A thrilling duel between {name1} and {name2}!",
+            "This is intense! {name1} and {name2} are pushing each other to the limit!",
+            "A magnificent battle between {name1} and {name2}!",
+            "The duel is on! {name1} versus {name2}!"
+        ]
+        
+        self.duel_multi_commentary_lines = [
+            "What a spectacle! Multiple runners are dueling for position!",
+            "An epic multi-uma battle is unfolding!",
+            "The pack is breaking apart as several runners duel for supremacy!",
+            "Multiple contenders are locked in combat! What a race!",
+            "A fierce multi-uma duel has erupted!"
+        ]
 
         # Gate numbers for visual display
         self.gate_numbers = {}
@@ -199,121 +82,140 @@ class UmaRacingGUI(QMainWindow):
         # === BARU: Lacak penanda jarak yang digambar ===
         self.distance_markers_drawn = {}
 
-        self.setWindowTitle("Uma Musume Racing Simulator - REAL TIME")
-        self.setGeometry(100, 100, 1200, 700)
+        self.title("Uma Musume Racing Simulator - REAL TIME")
+        self.geometry("900x700")
         self.setup_ui()
-        
-        # Timer for simulation loop
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.run_simulation_frame)
-        self.timer.start(50)  # ~20 FPS for smooth animation
 
-
-        
     def setup_ui(self):
-        """Setup PySide6 UI"""
-        # Central widget
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        
-        # Main layout
-        main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(10)
-        
+        # Main frame
+        main_frame = ttk.Frame(self)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        main_frame.grid_rowconfigure(1, weight=1)
+        main_frame.grid_rowconfigure(2, weight=1)
+        main_frame.grid_columnconfigure(0, weight=1)
+
         # Control panel
-        control_layout = QHBoxLayout()
-        
+        control_frame = ttk.Frame(main_frame)
+        control_frame.grid(row=0, column=0, sticky='ew')
+
         # Load button
-        self.load_btn = QPushButton("Load Racing Config")
-        self.load_btn.clicked.connect(self.load_racing_config)
-        control_layout.addWidget(self.load_btn)
-        
+        self.load_btn = ttk.Button(control_frame, text="Load Racing Config", command=self.load_racing_config)
+        self.load_btn.pack(side=tk.LEFT, padx=(0, 10))
+
         # Start button
-        self.start_btn = QPushButton("Start Simulation")
-        self.start_btn.clicked.connect(self.start_simulation)
-        control_layout.addWidget(self.start_btn)
-        
+        self.start_btn = ttk.Button(control_frame, text="Start Simulation", command=self.start_simulation)
+        self.start_btn.pack(side=tk.LEFT, padx=(0, 10))
+
         # Stop button
-        self.stop_btn = QPushButton("Stop Simulation")
-        self.stop_btn.clicked.connect(self.stop_simulation)
-        control_layout.addWidget(self.stop_btn)
-        
+        self.stop_btn = ttk.Button(control_frame, text="Stop Simulation", command=self.stop_simulation)
+        self.stop_btn.pack(side=tk.LEFT, padx=(0, 10))
+
         # Reset button
-        self.reset_btn = QPushButton("Reset")
-        self.reset_btn.clicked.connect(self.reset_simulation)
-        control_layout.addWidget(self.reset_btn)
-        
+        self.reset_btn = ttk.Button(control_frame, text="Reset", command=self.reset_simulation)
+        self.reset_btn.pack(side=tk.LEFT, padx=(0, 10))
+
         # Stat Priorities button
-        self.priorities_btn = QPushButton("Stat Priorities")
-        self.priorities_btn.clicked.connect(self.show_stat_priorities)
-        control_layout.addWidget(self.priorities_btn)
-        
-        # Speed label and combobox
-        control_layout.addWidget(QLabel("Speed:"))
-        self.speed_cb = QComboBox()
-        self.speed_cb.addItems(["0.5x", "1x", "2x", "5x", "10x"])
-        self.speed_cb.setCurrentText("1x")
-        self.speed_cb.setMaximumWidth(70)
-        control_layout.addWidget(self.speed_cb)
-        
+        self.priorities_btn = ttk.Button(control_frame, text="Stat Priorities", command=self.show_stat_priorities)
+        self.priorities_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        # Speed combobox
+        ttk.Label(control_frame, text="Speed:").pack(side=tk.LEFT, padx=(0, 5))
+        self.speed_cb = ttk.Combobox(control_frame, values=["0.5x", "1x", "2x", "5x", "10x"], width=5)
+        self.speed_cb.set("1x")
+        self.speed_cb.pack(side=tk.LEFT, padx=(0, 10))
+
         # Remaining distance label
-        self.remaining_label = QLabel("Remaining: -- | Lead: -- km/h")
-        control_layout.addWidget(self.remaining_label)
-        
+        self.remaining_label = ttk.Label(control_frame, text="Remaining: -- | Lead: -- km/h")
+        self.remaining_label.pack(side=tk.LEFT)
+
         # Real-time indicator
-        self.realtime_label = QLabel("REAL-TIME MODE")
-        self.realtime_label.setStyleSheet("color: red; font-weight: bold; font-size: 11px;")
-        control_layout.addWidget(self.realtime_label)
-        
-        control_layout.addStretch()
-        main_layout.addLayout(control_layout)
-        
-        # Splitter for canvas and output
-        splitter = QSplitter(Qt.Orientation.Vertical)
-        
-        # Canvas frame
-        self.canvas_frame = QFrame()
-        self.canvas_frame.setStyleSheet("background-color: #3a665a;")
-        self.canvas_frame.setMinimumHeight(200)
-        canvas_layout = QVBoxLayout(self.canvas_frame)
-        canvas_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Use a custom painter-based canvas
-        self.race_canvas = RaceCanvasWidget()
-        self.race_canvas.setStyleSheet("background-color: #3a665a;")
-        canvas_layout.addWidget(self.race_canvas)
-        
-        splitter.addWidget(self.canvas_frame)
-        
+        self.realtime_label = ttk.Label(control_frame, text="REAL-TIME MODE", foreground="red", font=('Arial', 10, 'bold'))
+        self.realtime_label.pack(side=tk.LEFT, padx=(20, 0))
+
+        # === PERUBAHAN VISUAL KANVAS (Meniru Video) ===
+        # Latar belakang hijau tua, tanpa border, expands to fill half height
+        self.canvas = tk.Canvas(main_frame, bg='#3a665a', highlightthickness=0)
+        self.canvas.grid(row=1, column=0, sticky='nsew')
+
         # Output text area
-        self.output_text = QTextEdit()
-        self.output_text.setReadOnly(True)
-        self.output_text.setStyleSheet("background-color: #0a0a0a; color: #00ff00; font-family: Courier; font-size: 9pt;")
-        self.output_text.setMaximumHeight(200)
-        splitter.addWidget(self.output_text)
-        
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 1)
-        
-        main_layout.addWidget(splitter, 1)
-        
+        output_frame = ttk.LabelFrame(main_frame, text="Simulation Output")
+        output_frame.grid(row=2, column=0, sticky='nsew')
+
+        self.output_text = scrolledtext.ScrolledText(output_frame)
+        self.output_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Bind canvas configure to redraw
+        self.canvas.bind("<Configure>", lambda e: self.draw_track())
+
+        # Draw initial track
+        self.after(100, self.draw_track())
+
     def draw_track(self):
-        """Draw track on canvas"""
-        self.race_canvas.update_display(self.sim_data, self.uma_distances, self.track_margin)
-    
-    def run_simulation_frame(self):
-        """Run one frame of simulation"""
-        if self.sim_running and self.sim_data:
-            self._run_real_time_tick()
+        """Draw Uma Musume style race track (Meniru Video)"""
+        self.canvas.delete("track")
+        w = self.canvas.winfo_width()
+        if w <= 1:
+            w = 800
+        # Dapatkan tinggi kanvas yang sebenarnya
+        h = self.canvas.winfo_height()
+        if h <= 1:
+            h = 80
+        
+        track_y = h // 2
+        
+        # === PERUBAHAN VISUAL GARIS (Meniru Video) ===
+        # Garis biru muda, lebih tebal
+        self.canvas.create_line(
+            self.track_margin, track_y,
+            w - self.track_margin, track_y,
+            fill='#a0d8e0', width=4, tags="track"
+        )
+        
+        # === PERUBAHAN VISUAL TEKS (Meniru Video) ===
+        # Teks START (Putih)
+        self.canvas.create_text(
+            self.track_margin - 30, track_y,
+            text="START", fill='white', font=('Arial', 12, 'bold'),
+            tags="track"
+        )
+        
+        # Teks FINISH (Putih)
+        self.canvas.create_text(
+            w - self.track_margin + 35, track_y,
+            text="FINISH", fill='white', font=('Arial', 12, 'bold'),
+            tags="track"
+        )
+        
+        # Hapus semua garis start/finish/tengah yang lama
+        
+    # === FUNGSI BARU: Menggambar penanda jarak ===
+    def draw_distance_marker(self, marker_distance, race_distance):
+        w = self.canvas.winfo_width()
+        if w <= 1: w = 800
+        h = self.canvas.winfo_height()
+        if h <= 1: h = 80
+        track_y = h // 2
+        track_width = w - 2 * self.track_margin
+        
+        # Hitung posisi X dari penanda
+        progress = (race_distance - marker_distance) / race_distance
+        x_pos = self.track_margin + (progress * track_width)
+        
+        text = f"{marker_distance}>"
+        
+        # Gambar teks di atas garis
+        self.canvas.create_text(
+            x_pos, track_y - 25, 
+            text=text, fill='white', font=('Arial', 10, 'bold'),
+            tags="distance_marker",
+            anchor=tk.N 
+        )
 
     def load_racing_config(self):
         """Load racing configuration from JSON file"""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select Racing Config File",
-            "",
-            "JSON files (*.json);;All files (*.*)"
+        file_path = filedialog.askopenfilename(
+            title="Select Racing Config File",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
         )
         
         if not file_path:
@@ -335,7 +237,7 @@ class UmaRacingGUI(QMainWindow):
             self.initialize_uma_icons()
             
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to load config file:\n{str(e)}")
+            messagebox.showerror("Error", f"Failed to load config file:\n{str(e)}")
             self.append_output(f"Error loading config: {str(e)}\n")
     
     def prepare_real_time_simulation(self, config_data):
@@ -516,13 +418,13 @@ class UmaRacingGUI(QMainWindow):
         self.uma_stamina = {name: 100.0 for name in uma_stats.keys()}
         self.uma_dnf = {name: {'dnf': False, 'reason': '', 'dnf_time': 0, 'dnf_distance': 0} for name in uma_stats.keys()}
         
-        # === ENHANCED: Initialize dueling system ===
-        self.uma_duels = {name: {'in_duel': False, 'opponent': None, 'start_time': 0, 
-                                 'intensity': 0, 'guts_powered': False, 'last_spurt_mode': False} 
-                          for name in uma_stats.keys()}
-        self.uma_last_spurt_duel = {name: False for name in uma_stats.keys()}
-        self.duel_history = []
-        self.last_spurt_duels_activated = set()
+        # === BARU: Inisialisasi variabel dueling ===
+        self.duel_active = False
+        self.duel_participants = set()
+        self.duel_start_time = 0
+        self.duel_commentary_made = False
+        self.duel_guts_used = {name: False for name in uma_stats.keys()}
+        self.duel_stamina_boost_used = {name: False for name in uma_stats.keys()}
 
         self.sim_time = 0.0
         self.finish_times.clear()
@@ -539,11 +441,7 @@ class UmaRacingGUI(QMainWindow):
 
         # === BARU: Hapus penanda jarak lama ===
         self.distance_markers_drawn.clear()
-        
-        # Initialize skill system (if needed in future)
-        self.uma_skills = {name: {} for name in uma_stats.keys()}
-        self.skill_effects = {}
-        self.skill_activations = set()
+        self.canvas.delete("distance_marker")
 
     def calculate_dnf_chance(self, uma_name, uma_stats):
         """Calculate DNF chance based on stats and aptitudes"""
@@ -623,6 +521,10 @@ class UmaRacingGUI(QMainWindow):
 
     def initialize_uma_icons(self):
         """Initialize Uma Musume style visual icons"""
+        for name, (circle, number_text, name_text) in self.uma_icons.items():
+            if circle: self.canvas.delete(circle)
+            if number_text: self.canvas.delete(number_text)
+            if name_text: self.canvas.delete(name_text)
         self.uma_icons.clear()
         self.uma_colors.clear()
         self.gate_numbers.clear()
@@ -646,7 +548,12 @@ class UmaRacingGUI(QMainWindow):
             self.gate_numbers[name] = gate_number
             color = colors[i % len(colors)]
             self.uma_colors[name] = color
-            self.uma_icons[name] = (None, None, None)  # Placeholder for PySide6
+            
+            circle = self.canvas.create_oval(0, 0, 0, 0, fill=color, outline='white', width=2, tags=name)
+            number_text = self.canvas.create_text(0, 0, text=str(gate_number), fill='white', font=('Arial', 10, 'bold'), tags=name)
+            name_text = self.canvas.create_text(0, 0, text="", fill='black', font=('Arial', 7), tags=name)
+            
+            self.uma_icons[name] = (circle, number_text, name_text)
             
         self.append_output(f"Initialized {len(uma_stats)} umas on track.\n")
 
@@ -663,8 +570,8 @@ class UmaRacingGUI(QMainWindow):
         self.sim_running = True
         self.initialize_real_time_simulation()
         
-        self.start_btn.setEnabled(False)
-        self.stop_btn.setEnabled(True)
+        self.start_btn.config(state='disabled')
+        self.stop_btn.config(state='normal')
         
         self.append_output("REAL-TIME SIMULATION started!\n")
         
@@ -676,7 +583,7 @@ class UmaRacingGUI(QMainWindow):
             return
             
         try:
-            speed_text = self.speed_cb.currentText()
+            speed_text = self.speed_cb.get()
             mult = 1.0
             if speed_text.endswith('x'):
                 try:
@@ -691,10 +598,6 @@ class UmaRacingGUI(QMainWindow):
             uma_stats = self.sim_data.get('uma_stats', {})
             
             current_frame_positions = self.calculate_real_time_positions(frame_dt * mult)
-            
-            # === ENHANCED: Check for duels between close umas AND last spurt duels ===
-            self.check_and_activate_duels(current_frame_positions, race_distance)
-            self.check_last_spurt_duels(current_frame_positions, race_distance)
 
             # Initialize remaining_distance
             remaining_distance = race_distance
@@ -709,7 +612,10 @@ class UmaRacingGUI(QMainWindow):
                     if remaining_distance <= marker and marker not in self.distance_markers_drawn:
                         self.draw_distance_marker(marker, race_distance)
                         self.distance_markers_drawn[marker] = True
-            # === AKHIR BLOK BARU ===
+            
+            # === BARU: Check and trigger dueling mechanism ===
+            if not self.duel_active and 400 <= remaining_distance <= 1200:
+                self.check_and_trigger_dueling(uma_stats, current_frame_positions, race_distance)
 
             current_incidents = {name: self.uma_incidents[name]['type'] for name in uma_stats.keys() if self.uma_incidents[name]['type'] and not self.uma_finished[name] and not self.uma_dnf[name]['dnf']}
 
@@ -719,7 +625,6 @@ class UmaRacingGUI(QMainWindow):
             if self.sim_time - self.last_commentary_time > 1.8:
                 leader_dist = active_positions[0][1] if active_positions else current_frame_positions[0][1] if current_frame_positions else 0
                 remaining_distance = max(0, race_distance - leader_dist)
-                
             commentaries = self.get_enhanced_commentary(
                     self.sim_time, active_positions, race_distance,
                     remaining_distance, current_incidents, set(self.finish_times.keys())
@@ -739,218 +644,21 @@ class UmaRacingGUI(QMainWindow):
             
             if all_finished:
                 self.sim_running = False
-                self.start_btn.setEnabled(True)
-                self.stop_btn.setEnabled(False)
+                self.start_btn.config(state='normal')
+                self.stop_btn.config(state='disabled')
                 self.display_final_results()
                 return
+
+            self.sim_after_id = self.after(int(frame_dt * 1000 / mult), self._run_real_time_tick)
             
         except Exception as e:
             self.append_output(f"Simulation error: {str(e)}\n")
             self.sim_running = False
-            self.start_btn.setEnabled(True)
-            self.stop_btn.setEnabled(False)
-
-    def check_and_activate_duels(self, frame_positions, race_distance):
-        """Check for and activate duels between close umas with Guts-based mechanics"""
-        if len(frame_positions) < 2:
-            return
-        
-        race_progress = frame_positions[0][1] / race_distance
-        
-        # Check for duels throughout the race, but with different mechanics
-        for i in range(len(frame_positions) - 1):
-            uma1_name, uma1_dist = frame_positions[i]
-            uma2_name, uma2_dist = frame_positions[i + 1]
-            
-            # Skip if either uma is finished or DNF
-            if self.uma_finished.get(uma1_name, False) or self.uma_dnf.get(uma1_name, {}).get('dnf', False) or \
-               self.uma_finished.get(uma2_name, False) or self.uma_dnf.get(uma2_name, {}).get('dnf', False):
-                continue
-            
-            distance_gap = uma1_dist - uma2_dist
-            
-            # Check if umas are close enough to duel (within 1.5 meters)
-            if distance_gap < 1.5:
-                # Check if they're not already in a duel
-                if not self.uma_duels[uma1_name]['in_duel'] and not self.uma_duels[uma2_name]['in_duel']:
-                    # Determine duel chance based on GUTS - Guts plays a BIG role!
-                    uma1_stats = self.sim_data['uma_stats'][uma1_name]
-                    uma2_stats = self.sim_data['uma_stats'][uma2_name]
-                    
-                    # Guts-based duel chance: Higher guts = more likely to engage in duel
-                    guts_factor = (uma1_stats['guts'] + uma2_stats['guts']) / 2000.0
-                    base_chance = 0.2
-                    duel_chance = base_chance + (guts_factor * 0.3)  # Up to 50% chance with high guts
-                    
-                    if random.random() < duel_chance:
-                        # Start a duel - intensity based on Guts difference
-                        guts_diff = abs(uma1_stats['guts'] - uma2_stats['guts'])
-                        intensity = 0.5 + (guts_diff / 1000.0)  # Higher guts difference = more intense duel
-                        
-                        # Check if either uma can use Guts as stamina backup
-                        guts_powered_uma = None
-                        if uma1_stats['guts'] > 120 and self.uma_stamina[uma1_name] < 50:
-                            guts_powered_uma = uma1_name
-                        elif uma2_stats['guts'] > 120 and self.uma_stamina[uma2_name] < 50:
-                            guts_powered_uma = uma2_name
-                        
-                        self.uma_duels[uma1_name] = {
-                            'in_duel': True,
-                            'opponent': uma2_name,
-                            'start_time': self.sim_time,
-                            'intensity': intensity,
-                            'guts_powered': (guts_powered_uma == uma1_name),
-                            'last_spurt_mode': False
-                        }
-                        self.uma_duels[uma2_name] = {
-                            'in_duel': True,
-                            'opponent': uma1_name,
-                            'start_time': self.sim_time,
-                            'intensity': intensity,
-                            'guts_powered': (guts_powered_uma == uma2_name),
-                            'last_spurt_mode': False
-                        }
-                        
-                        # Add to duel history
-                        self.duel_history.append({
-                            'uma1': uma1_name,
-                            'uma2': uma2_name,
-                            'start_time': self.sim_time,
-                            'start_distance': uma1_dist,
-                            'intensity': intensity,
-                            'guts_powered': guts_powered_uma is not None
-                        })
-                        
-                        # Enhanced duel commentary with more lines
-                        if self.sim_time - self.last_commentary_time > 2.0:
-                            gate1 = self.gate_numbers.get(uma1_name, "?")
-                            gate2 = self.gate_numbers.get(uma2_name, "?")
-                            duel_commentaries = [
-                                f"And now we have dueling between the number {gate1} {uma1_name} and the number {gate2} {uma2_name}!",
-                                f"What a battle! The number {gate1} {uma1_name} and the number {gate2} {uma2_name} are going head-to-head!",
-                                f"An intense duel develops between the number {gate1} {uma1_name} and the number {gate2} {uma2_name}!",
-                                f"Look at this! The number {gate1} {uma1_name} challenges the number {gate2} {uma2_name}!",
-                                f"A thrilling duel unfolds! The number {gate1} {uma1_name} versus the number {gate2} {uma2_name}!",
-                                f"They're neck and neck! The number {gate1} {uma1_name} and the number {gate2} {uma2_name} in a fierce battle!",
-                                f"This is incredible! The number {gate1} {uma1_name} and the number {gate2} {uma2_name} are locked in combat!",
-                                f"What a spectacle! The number {gate1} {uma1_name} takes on the number {gate2} {uma2_name} in a duel!",
-                                f"The crowd goes wild as the number {gate1} {uma1_name} and the number {gate2} {uma2_name} duel for position!",
-                                f"A magnificent duel! The number {gate1} {uma1_name} and the number {gate2} {uma2_name} are pushing each other to the limit!"
-                            ]
-                            if guts_powered_uma:
-                                powered_gate = self.gate_numbers.get(guts_powered_uma, "?")
-                                duel_commentaries.append(f"Amazing! The number {powered_gate} {guts_powered_uma} is using their incredible Guts to fuel this duel!")
-                                duel_commentaries.append(f"Unbelievable! The number {powered_gate} {guts_powered_uma} is tapping into their Guts reserves for extra power!")
-                            
-                            self.append_output(f"[{self.sim_time:.1f}s] {random.choice(duel_commentaries)}\n")
-                            self.last_commentary_time = self.sim_time
-                
-                # Update existing duels
-                elif (self.uma_duels[uma1_name]['in_duel'] and 
-                      self.uma_duels[uma1_name]['opponent'] == uma2_name):
-                    # Continue the duel
-                    duel_duration = self.sim_time - self.uma_duels[uma1_name]['start_time']
-                    
-                    # End duel if they've been dueling for too long or gap increases
-                    if duel_duration > 12.0 or distance_gap > 2.5:
-                        self.uma_duels[uma1_name]['in_duel'] = False
-                        self.uma_duels[uma2_name]['in_duel'] = False
-                        
-                        # Update duel history
-                        for duel in reversed(self.duel_history):
-                            if (duel['uma1'] == uma1_name and duel['uma2'] == uma2_name) or \
-                               (duel['uma1'] == uma2_name and duel['uma2'] == uma1_name):
-                                duel['end_time'] = self.sim_time
-                                duel['end_distance'] = uma1_dist
-                                break
-        
-        # Check for duel expiration
-        for uma_name in list(self.uma_duels.keys()):
-            if self.uma_duels[uma_name]['in_duel']:
-                opponent = self.uma_duels[uma_name]['opponent']
-                if opponent and uma_name in self.uma_distances and opponent in self.uma_distances:
-                    distance_gap = abs(self.uma_distances[uma_name] - self.uma_distances[opponent])
-                    duel_duration = self.sim_time - self.uma_duels[uma_name]['start_time']
-                    
-                    if distance_gap > 2.5 or duel_duration > 15.0:
-                        self.uma_duels[uma_name]['in_duel'] = False
-                        if opponent in self.uma_duels:
-                            self.uma_duels[opponent]['in_duel'] = False
-
-    def check_last_spurt_duels(self, frame_positions, race_distance):
-        """Check for and activate last spurt duels (around 1000m remaining)"""
-        if not frame_positions:
-            return
-        
-        leader_dist = frame_positions[0][1]
-        remaining_distance = race_distance - leader_dist
-        
-        # Activate last spurt duels when around 1000m remaining
-        if 900 <= remaining_distance <= 1100:
-            for uma_name, uma_dist in frame_positions:
-                # Skip if finished or DNF
-                if self.uma_finished.get(uma_name, False) or self.uma_dnf.get(uma_name, {}).get('dnf', False):
-                    continue
-                
-                # Check if this uma hasn't activated last spurt duel yet
-                if uma_name not in self.last_spurt_duels_activated:
-                    uma_stats = self.sim_data['uma_stats'][uma_name]
-                    
-                    # High Guts umas are more likely to activate last spurt duel
-                    guts_bonus = uma_stats['guts'] / 1000.0
-                    activation_chance = 0.3 + (guts_bonus * 0.4)  # 30-70% chance based on Guts
-                    
-                    if random.random() < activation_chance:
-                        self.uma_last_spurt_duel[uma_name] = True
-                        self.last_spurt_duels_activated.add(uma_name)
-                        
-                        # Determine if this uma can break from pack using Guts
-                        current_pos = frame_positions.index((uma_name, uma_dist)) + 1
-                        
-                        # Check if uma is in middle of pack (positions 4-8 in a typical race)
-                        if 4 <= current_pos <= 8:
-                            # High Guts umas can break from pack
-                            if uma_stats['guts'] > 110:
-                                # Break from pack - create a solo duel effect
-                                self.uma_duels[uma_name] = {
-                                    'in_duel': True,
-                                    'opponent': None,  # Solo duel against the pack
-                                    'start_time': self.sim_time,
-                                    'intensity': 1.0 + (uma_stats['guts'] / 200.0),
-                                    'guts_powered': True,
-                                    'last_spurt_mode': True
-                                }
-                                
-                                # Last spurt duel commentary
-                                gate_num = self.gate_numbers.get(uma_name, "?")
-                                last_spurt_commentaries = [
-                                    f"Incredible! The number {gate_num} {uma_name} unleashes their last spurt using incredible Guts!",
-                                    f"Watch out! The number {gate_num} {uma_name} is breaking from the pack with sheer determination!",
-                                    f"Amazing guts from the number {gate_num} {uma_name}! They're making their move in the last spurt!",
-                                    f"The number {gate_num} {uma_name} shows tremendous heart! Breaking free in the final stretch!",
-                                    f"What a display of courage! The number {gate_num} {uma_name} challenges the entire field!",
-                                    f"Unbelievable! The number {gate_num} {uma_name} taps into their Guts reserves for a final push!",
-                                    f"The number {gate_num} {uma_name} is dueling against fatigue itself! What spirit!",
-                                    f"Look at that acceleration! The number {gate_num} {uma_name} is on a mission in the last spurt!"
-                                ]
-                                
-                                if self.sim_time - self.last_commentary_time > 2.0:
-                                    self.append_output(f"[{self.sim_time:.1f}s] {random.choice(last_spurt_commentaries)}\n")
-                                    self.last_commentary_time = self.sim_time
-                        
-                        else:
-                            # Already near front, just activate last spurt mode
-                            self.uma_duels[uma_name] = {
-                                'in_duel': True,
-                                'opponent': None,
-                                'start_time': self.sim_time,
-                                'intensity': 0.8 + (uma_stats['guts'] / 250.0),
-                                'guts_powered': (uma_stats['guts'] > 100),
-                                'last_spurt_mode': True
-                            }
+            self.start_btn.config(state='normal')
+            self.stop_btn.config(state='disabled')
 
     def calculate_real_time_positions(self, time_delta):
-        """Calculate new positions with distance-specific mechanics and enhanced dueling"""
+        """Calculate new positions with distance-specific mechanics"""
         race_distance = self.sim_data.get('race_distance', 2500)
         race_type = self.sim_data.get('race_type', 'Medium')
         uma_stats = self.sim_data.get('uma_stats', {})
@@ -958,7 +666,9 @@ class UmaRacingGUI(QMainWindow):
         frame_positions = []
         
         for uma_name in uma_stats.keys():
+            # === PERBAIKAN BUG 1 ===
             # Kuda yang sudah finish/DNF tetap dimasukkan ke frame_positions
+            # agar .index() tidak error. Tapi kita lewati kalkulasi untuk mereka.
             if self.uma_finished[uma_name] or self.uma_dnf[uma_name]['dnf']:
                 frame_positions.append((uma_name, self.uma_distances[uma_name]))
                 continue
@@ -998,51 +708,6 @@ class UmaRacingGUI(QMainWindow):
                     continue
 
             current_speed = self.calculate_current_speed(uma_name, uma_stat, race_distance, race_type)
-            
-            # === ENHANCED: Apply duel effects with Guts mechanics ===
-            if self.uma_duels[uma_name]['in_duel']:
-                duel_intensity = self.uma_duels[uma_name]['intensity']
-                guts_powered = self.uma_duels[uma_name]['guts_powered']
-                last_spurt_mode = self.uma_duels[uma_name]['last_spurt_mode']
-                
-                if last_spurt_mode:
-                    # Last spurt duels: massive speed boost but heavy stamina drain
-                    speed_boost = 0.15 + (duel_intensity * 0.1)  # 15-25% boost
-                    current_speed *= (1.0 + speed_boost)
-                    
-                    # Surgical speed precision for high Guts umas
-                    if uma_stat['guts'] > 120:
-                        surgical_bonus = (uma_stat['guts'] - 120) / 400.0  # Up to 7.5% extra
-                        current_speed *= (1.0 + surgical_bonus)
-                    
-                    # Heavy stamina drain
-                    extra_stamina_drain = duel_intensity * 0.04
-                    
-                    # But Guts can be used as stamina backup!
-                    if guts_powered and self.uma_stamina[uma_name] < 30:
-                        # Convert Guts to temporary stamina
-                        guts_conversion = min(uma_stat['guts'] / 50.0, 20.0)
-                        self.uma_stamina[uma_name] += guts_conversion
-                        extra_stamina_drain *= 0.5  # Reduced drain when using Guts backup
-                    
-                    self.uma_stamina[uma_name] = max(0.0, self.uma_stamina[uma_name] - extra_stamina_drain)
-                    
-                else:
-                    # Normal duels: speed boost based on intensity
-                    speed_boost = duel_intensity * 0.08  # Up to ~12% boost
-                    current_speed *= (1.0 + speed_boost)
-                    
-                    # Extra stamina drain during duels
-                    extra_stamina_drain = duel_intensity * 0.02
-                    
-                    # Guts-powered duels use Guts as stamina backup
-                    if guts_powered and self.uma_stamina[uma_name] < 40:
-                        guts_conversion = min(uma_stat['guts'] / 100.0, 15.0)
-                        self.uma_stamina[uma_name] += guts_conversion
-                        extra_stamina_drain *= 0.7
-                    
-                    self.uma_stamina[uma_name] = max(0.0, self.uma_stamina[uma_name] - extra_stamina_drain)
-            
             current_speed *= self.uma_momentum[uma_name]
             distance_covered = current_speed * time_delta
             self.uma_distances[uma_name] += distance_covered
@@ -1065,12 +730,6 @@ class UmaRacingGUI(QMainWindow):
         
         return frame_positions
 
-    def draw_distance_marker(self, marker_distance, race_distance):
-        """Draw a distance marker on the track (placeholder for PySide6)"""
-        # This is a visual marker for important distance callouts
-        # In the simple track design, we just announce via commentary
-        pass
-    
     def check_and_activate_skills(self, uma_name, uma_stat, race_distance, race_type):
         """Check and activate skills based on race phase, cooldown, and chance"""
         current_distance = self.uma_distances[uma_name]
@@ -1137,7 +796,8 @@ class UmaRacingGUI(QMainWindow):
             elif effect_type == 'momentum_boost':
                 self.uma_momentum[uma_name] += value
 
-            # Skill activated (used for commentary tracking if needed)
+            # Add to skill activations for commentary
+            self.skill_activations.add((uma_name, skill_name, self.sim_time))
 
     def calculate_current_speed(self, uma_name, uma_stat, race_distance, race_type):
         """Calculate current speed with distance-specific phase mechanics"""
@@ -1191,79 +851,198 @@ class UmaRacingGUI(QMainWindow):
 
         target_speed *= uma_stat['base_performance']
         
-        # Stamina-based speed adjustments
-        stamina_ratio = self.uma_stamina[uma_name] / 100.0
-        if stamina_ratio > 0.8:
-            # High stamina: slight boost
-            target_speed *= 1.02
-        elif stamina_ratio > 0.6:
-            # Good stamina: normal speed
-            target_speed *= 1.00
-        elif stamina_ratio > 0.4:
-            # Moderate stamina: slight penalty
-            target_speed *= 0.98
-        elif stamina_ratio > 0.2:
-            # Low stamina: moderate penalty
-            target_speed *= 0.95
-        else:
-            # Critical stamina: severe penalty
-            target_speed *= 0.90
-        
-        fatigue_penalty = self.uma_fatigue[uma_name] * 0.04
-        target_speed *= (1.0 - min(fatigue_penalty, 0.15))
+        # === DIKURANGI BANYAK: Fatigue penalty sangat dikurangi ===
+        fatigue_penalty = self.uma_fatigue[uma_name] * 0.01  # Reduced from 0.04 to 0.01
+        target_speed *= (1.0 - min(fatigue_penalty, 0.05))  # Max penalty reduced to 5% from 15%
 
         stamina_ratio = self.uma_stamina[uma_name] / 100.0
         guts_efficiency = uma_stat['guts'] / 1000.0
         effective_stamina = stamina_ratio * (0.7 + 0.3 * guts_efficiency)
 
+        # === DIKURANGI BANYAK: Speed penalties from low stamina reduced ===
         if effective_stamina < 0.1:
-            target_speed *= 0.90
+            target_speed *= 0.97  # Reduced from 0.90
         elif effective_stamina < 0.3:
-            target_speed *= 0.94
+            target_speed *= 0.98  # Reduced from 0.94
         elif effective_stamina < 0.5:
-            target_speed *= 0.97
+            target_speed *= 0.99  # Reduced from 0.97
         elif effective_stamina < 0.7:
-            target_speed *= 0.99
+            target_speed *= 0.995  # Reduced from 0.99
 
         self.update_fatigue_and_stamina(uma_name, uma_stat, race_progress, current_phase)
 
         variation = 1.0 + (random.random() * 0.04 - 0.02)
         target_speed *= variation
 
-        return max(target_speed, base_speed * 0.85)
+        return max(target_speed, base_speed * 0.92)  # Increased minimum from 85% to 92%
 
     def update_fatigue_and_stamina(self, uma_name, uma_stat, race_progress, current_phase):
-        """Update fatigue and stamina with distance-specific mechanics"""
+        """Update fatigue and stamina with distance-specific mechanics - SIGNIFICANTLY REDUCED"""
+        # === DIKURANGI BANYAK: Fatigue rates reduced by 80-90% ===
         fatigue_rates = {
-            'Sprint': {'start': 0.0015, 'mid': 0.002, 'final': 0.003, 'sprint': 0.004},
-            'Mile': {'start': 0.002, 'mid': 0.0025, 'final': 0.004, 'sprint': 0.005},
-            'Medium': {'start': 0.0025, 'mid': 0.003, 'final': 0.004, 'sprint': 0.006},
-            'Long': {'start': 0.003, 'mid': 0.004, 'final': 0.005, 'sprint': 0.007}
+            'Sprint': {'start': 0.0003, 'mid': 0.0004, 'final': 0.0006, 'sprint': 0.0008},  # Reduced by ~80%
+            'Mile': {'start': 0.0004, 'mid': 0.0005, 'final': 0.0008, 'sprint': 0.0010},    # Reduced by ~80%
+            'Medium': {'start': 0.0005, 'mid': 0.0006, 'final': 0.0008, 'sprint': 0.0012},  # Reduced by ~80%
+            'Long': {'start': 0.0006, 'mid': 0.0008, 'final': 0.0010, 'sprint': 0.0014}     # Reduced by ~80%
         }
         
         race_type = uma_stat['race_type']
         rates = fatigue_rates.get(race_type, fatigue_rates['Medium'])
-        fatigue_rate = rates.get(current_phase, 0.003)
+        fatigue_rate = rates.get(current_phase, 0.0006)  # Reduced from 0.003
         
         # Base stamina bonus helps a lot (even 100 stamina helps)
         stamina_bonus = uma_stat['stamina'] / 500.0  # More generous scaling
-        fatigue_rate *= max(0.3, 1.0 - stamina_bonus * 0.5)  # Minimum 30% fatigue rate
+        fatigue_rate *= max(0.1, 1.0 - stamina_bonus * 0.8)  # Minimum 10% fatigue rate (was 30%)
         
         self.uma_fatigue[uma_name] += fatigue_rate
         
-        base_stamina_drain = 0.03  # Reduced from 0.08
-        phase_multipliers = {'start': 0.6, 'mid': 0.8, 'final': 1.0, 'sprint': 1.2}  # Reduced
-        stamina_depletion = base_stamina_drain * phase_multipliers.get(current_phase, 0.8)
-        stamina_depletion += (self.uma_fatigue[uma_name] * 0.08)  # Reduced from 0.15
+        # === DIKURANGI BANYAK: Stamina depletion reduced by 70-80% ===
+        base_stamina_drain = 0.006  # Reduced from 0.03 (80% reduction)
+        phase_multipliers = {'start': 0.3, 'mid': 0.4, 'final': 0.5, 'sprint': 0.6}  # Reduced from 0.6-1.2
+        stamina_depletion = base_stamina_drain * phase_multipliers.get(current_phase, 0.4)
+        stamina_depletion += (self.uma_fatigue[uma_name] * 0.016)  # Reduced from 0.08 (80% reduction)
         
-        # Guts reduces stamina drain significantly!
-        guts_bonus = uma_stat['guts'] / 600.0  # Guts plays BIG role in stamina conservation
-        stamina_depletion *= max(0.4, 1.0 - guts_bonus * 0.6)  # Minimum 40% drain with high Guts
+        guts_bonus = uma_stat['guts'] / 800.0  # More generous scaling
+        stamina_depletion *= max(0.2, 1.0 - guts_bonus * 0.8)  # Minimum 20% drain (was 50%)
         
-        self.uma_stamina[uma_name] = max(0.0, self.uma_stamina[uma_name] - stamina_depletion)
+        # Prevent stamina from going too low
+        if self.uma_stamina[uma_name] > 10.0:  # Only drain if above 10%
+            self.uma_stamina[uma_name] = max(10.0, self.uma_stamina[uma_name] - stamina_depletion)
+        else:
+            # Very slow drain when already low
+            self.uma_stamina[uma_name] = max(5.0, self.uma_stamina[uma_name] - stamina_depletion * 0.1)
+
+    # === FUNGSI BARU: Mekanisme dueling ===
+    def check_and_trigger_dueling(self, uma_stats, frame_positions, race_distance):
+        """Check and trigger dueling mechanism during final spurt"""
+        remaining_distance = race_distance - frame_positions[0][1]
+        
+        # Only trigger dueling when 400-1200 meters remaining
+        if not (400 <= remaining_distance <= 1200):
+            return
+        
+        # Check if dueling is already active
+        if self.duel_active:
+            # Check if duel should end (too close to finish or participants finished)
+            if remaining_distance < 100 or not self.duel_participants:
+                self.duel_active = False
+                self.duel_participants.clear()
+                self.append_output(f"[{self.sim_time:.1f}s] The duel has concluded!\n")
+            return
+        
+        # Find potential duel participants (active umas that are close together)
+        active_umas = [(name, dist) for name, dist in frame_positions 
+                        if not self.uma_finished[name] and not self.uma_dnf[name]['dnf']]
+        
+        if len(active_umas) < 2:
+            return
+        
+        # Group umas by proximity (within 5 meters of each other)
+        duel_groups = []
+        current_group = [active_umas[0]]
+        
+        for i in range(1, len(active_umas)):
+            prev_name, prev_dist = active_umas[i-1]
+            curr_name, curr_dist = active_umas[i]
+            
+            if abs(prev_dist - curr_dist) <= 5.0:
+                current_group.append(active_umas[i])
+            else:
+                if len(current_group) >= 2:
+                    duel_groups.append(current_group)
+                current_group = [active_umas[i]]
+        
+        if len(current_group) >= 2:
+            duel_groups.append(current_group)
+        
+        # Check for duel triggers based on guts and position
+        for group in duel_groups:
+            if len(group) >= 2:
+                # Check if any uma in the group has high guts and wants to initiate duel
+                for name, dist in group:
+                    uma_stat = uma_stats[name]
+                    guts_value = uma_stat['guts']
+                    
+                    # High guts umas are more likely to initiate duels
+                    guts_chance = min(0.7, guts_value / 200.0)  # Up to 70% chance for high guts
+                    
+                    # Additional chance if uma is blocked or in middle of pack
+                    position_idx = [frame_positions.index((n, d)) for n, d in frame_positions if n == name][0]
+                    total_umas = len(frame_positions)
+                    
+                    # umas in middle positions are more likely to want to break out
+                    position_factor = 1.0
+                    if 0.3 <= (position_idx / total_umas) <= 0.7:
+                        position_factor = 1.5
+                    
+                    final_chance = guts_chance * position_factor * 0.1  # 10% base chance
+                    
+                    if random.random() < final_chance and not self.duel_guts_used[name]:
+                        # This uma initiates a duel!
+                        self.duel_active = True
+                        self.duel_start_time = self.sim_time
+                        
+                        # Add this uma and nearby umas to duel participants
+                        for duel_name, duel_dist in group:
+                            if duel_name not in self.duel_participants:
+                                self.duel_participants.add(duel_name)
+                        
+                        # Apply duel bonuses based on guts
+                        for participant in self.duel_participants:
+                            participant_stat = uma_stats[participant]
+                            participant_guts = participant_stat['guts']
+                            
+                            # Guts-based stamina boost (acts as backup stamina)
+                            guts_stamina_boost = min(20.0, participant_guts / 10.0)  # Up to 20% stamina boost
+                            
+                            if not self.duel_stamina_boost_used[participant]:
+                                self.uma_stamina[participant] = min(100.0, self.uma_stamina[participant] + guts_stamina_boost)
+                                self.duel_stamina_boost_used[participant] = True
+                                self.append_output(f"[{self.sim_time:.1f}s] {participant}'s guts provides {guts_stamina_boost:.1f}% stamina backup!\n")
+                            
+                            # Speed boost for high guts umas during duel
+                            if participant_guts > 800:  # Very high guts
+                                speed_boost = 0.15
+                                self.uma_momentum[participant] += speed_boost
+                                self.append_output(f"[{self.sim_time:.1f}s] {participant}'s incredible guts provides a speed surge!\n")
+                            elif participant_guts > 600:  # High guts
+                                speed_boost = 0.10
+                                self.uma_momentum[participant] += speed_boost
+                            elif participant_guts > 400:  # Medium guts
+                                speed_boost = 0.05
+                                self.uma_momentum[participant] += speed_boost
+                        
+                        self.duel_guts_used[name] = True
+                        self.append_output(f"[{self.sim_time:.1f}s] {name} initiates a duel using their guts!\n")
+                        return
+
+    # === FUNGSI BARU: Komentar dueling ===
+    def get_duel_commentary(self):
+        """Generate commentary for dueling situations"""
+        if not self.duel_active or self.duel_commentary_made:
+            return ""
+        
+        participants = list(self.duel_participants)
+        if len(participants) == 0:
+            return ""
+        
+        self.duel_commentary_made = True
+        
+        if len(participants) == 2:
+            commentary = random.choice(self.duel_commentary_lines)
+            return commentary.format(name1=participants[0], name2=participants[1])
+        elif len(participants) > 2:
+            # For multi-uma duels, mention top 2
+            if len(participants) >= 2:
+                commentary = random.choice(self.duel_commentary_lines)
+                return commentary.format(name1=participants[0], name2=participants[1])
+            else:
+                return random.choice(self.duel_multi_commentary_lines)
+        
+        return ""
 
     def get_enhanced_commentary(self, current_time, positions, race_distance, remaining_distance, incidents, finished):
-        """Enhanced commentary system"""
+        """Enhanced commentary system with dueling"""
         commentaries = []
         
         if not positions:
@@ -1271,6 +1050,11 @@ class UmaRacingGUI(QMainWindow):
             
         leader_name, leader_distance = positions[0]
         race_progress = leader_distance / race_distance
+        
+        # === BARU: Tambahkan komentar dueling ===
+        duel_commentary = self.get_duel_commentary()
+        if duel_commentary:
+            commentaries.append(duel_commentary)
         
         distance_markers = [1800, 1600, 1400, 1200, 1000, 800, 600, 400, 200, 100, 50]
         for marker in distance_markers:
@@ -1317,16 +1101,6 @@ class UmaRacingGUI(QMainWindow):
         dnf_commentary = self.get_dnf_commentary(positions, race_progress)
         if dnf_commentary:
             commentaries.append(dnf_commentary)
-        
-        # Duel commentary
-        duel_commentary = self.get_duel_commentary(positions, race_progress)
-        if duel_commentary:
-            commentaries.append(duel_commentary)
-        
-        # Last spurt duel commentary
-        last_spurt_commentary = self.get_last_spurt_commentary(positions, remaining_distance)
-        if last_spurt_commentary:
-            commentaries.append(last_spurt_commentary)
         
         return commentaries[:2]
 
@@ -1485,117 +1259,20 @@ class UmaRacingGUI(QMainWindow):
 
         return random.choice(lines)
     
-    def get_duel_commentary(self, positions, race_progress):
-        """Commentary for ongoing duels between umas"""
-        if race_progress < 0.2 or race_progress > 0.95:
-            return ""
-        
-        # Find active duels
-        active_duels = []
-        for uma_name, duel_info in self.uma_duels.items():
-            if duel_info['in_duel'] and duel_info['opponent'] and not duel_info['last_spurt_mode']:
-                # Make sure we don't duplicate
-                pair = tuple(sorted([uma_name, duel_info['opponent']]))
-                if pair not in active_duels:
-                    active_duels.append(pair)
-        
-        if not active_duels:
-            return ""
-        
-        # Get the most recent duel
-        recent_duels = []
-        for duel in self.duel_history:
-            if 'end_time' not in duel or self.sim_time - duel['end_time'] < 5.0:
-                recent_duels.append(duel)
-        
-        if not recent_duels:
-            return ""
-        
-        recent_duel = recent_duels[-1]
-        uma1 = recent_duel['uma1']
-        uma2 = recent_duel['uma2']
-        gate1 = self.gate_numbers.get(uma1, "?")
-        gate2 = self.gate_numbers.get(uma2, "?")
-        
-        duel_lines = [
-            f"What a battle between the number {gate1} {uma1} and the number {gate2} {uma2}!",
-            f"The number {gate1} {uma1} and the number {gate2} {uma2} are pushing each other to the limit!",
-            f"Incredible determination from both the number {gate1} {uma1} and the number {gate2} {uma2}!",
-            f"This duel between the number {gate1} {uma1} and the number {gate2} {uma2} is captivating!",
-            f"Neither the number {gate1} {uma1} nor the number {gate2} {uma2} is giving an inch!",
-            f"A magnificent display of racing spirit between the number {gate1} {uma1} and the number {gate2} {uma2}!",
-            f"The number {gate1} {uma1} and the number {gate2} {uma2} are absolutely inseparable!",
-            f"What courage from both the number {gate1} {uma1} and the number {gate2} {uma2}!"
-        ]
-        
-        if recent_duel.get('guts_powered', False):
-            powered_uma = uma1 if self.sim_data['uma_stats'][uma1]['guts'] > self.sim_data['uma_stats'][uma2]['guts'] else uma2
-            powered_gate = self.gate_numbers.get(powered_uma, "?")
-            duel_lines.append(f"Look at the number {powered_gate} {powered_uma}! Using incredible Guts to sustain this duel!")
-            duel_lines.append(f"The number {powered_gate} {powered_uma} is showing tremendous heart in this battle!")
-        
-        return random.choice(duel_lines)
-    
-    def get_last_spurt_commentary(self, positions, remaining_distance):
-        """Commentary for last spurt duels"""
-        if not 800 <= remaining_distance <= 1200:
-            return ""
-        
-        # Find umas in last spurt duel mode
-        last_spurt_umas = []
-        for uma_name, duel_info in self.uma_duels.items():
-            if duel_info['in_duel'] and duel_info['last_spurt_mode']:
-                last_spurt_umas.append(uma_name)
-        
-        if not last_spurt_umas:
-            return ""
-        
-        uma_name = last_spurt_umas[0]
-        gate_num = self.gate_numbers.get(uma_name, "?")
-        uma_stats = self.sim_data['uma_stats'][uma_name]
-        
-        last_spurt_lines = [
-            f"Incredible! The number {gate_num} {uma_name} unleashes their last spurt!",
-            f"Watch out! The number {gate_num} {uma_name} is making their move in the final stretch!",
-            f"Amazing determination from the number {gate_num} {uma_name} in the last spurt!",
-            f"The number {gate_num} {uma_name} shows tremendous heart! Going all out in the final push!",
-            f"What a display of courage! The number {gate_num} {uma_name} challenges the entire field!",
-            f"Unbelievable! The number {gate_num} {uma_name} taps into their Guts reserves for a final push!",
-            f"The number {gate_num} {uma_name} is dueling against fatigue itself! What spirit!",
-            f"Look at that acceleration! The number {gate_num} {uma_name} is on a mission!",
-            f"The number {gate_num} {uma_name} breaks from the pack with surgical precision!",
-            f"What a move! The number {gate_num} {uma_name} finds an opening and explodes forward!"
-        ]
-        
-        # Add Guts-specific commentary
-        if uma_stats['guts'] > 120:
-            last_spurt_lines.append(f"Incredible Guts from the number {gate_num} {uma_name}! Using heart as fuel for this final charge!")
-            last_spurt_lines.append(f"The number {gate_num} {uma_name}'s tremendous Guts is powering this amazing last spurt!")
-        
-        if uma_stats['guts'] > 140:
-            last_spurt_lines.append(f"Unbelievable! The number {gate_num} {uma_name} is breaking all limits with their incredible Guts!")
-            last_spurt_lines.append(f"This is what championship spirit looks like! The number {gate_num} {uma_name} refuses to give up!")
-        
-        return random.choice(last_spurt_lines)
-    
     def update_display(self, frame_positions, race_distance):
-        """Update display - update the canvas widget"""
+        """Update Uma Musume style display"""
         if not self.sim_data:
             return
+            
+        w = self.canvas.winfo_width()
+        if w <= 1:
+            w = 800
+        h = self.canvas.winfo_height()
+        if h <= 1:
+            h = 80
+        track_y = h // 2
+        track_width = w - 2 * self.track_margin
         
-        # Update the canvas widget with new data
-        self.race_canvas.update_display(
-            self.sim_data, 
-            self.uma_distances, 
-            self.uma_finished,
-            self.uma_dnf,
-            self.uma_incidents,
-            self.uma_colors,
-            self.gate_numbers,
-            self.track_margin
-        )
-        
-        # Update status labels
         if frame_positions:
             leader_dist = frame_positions[0][1]
             remaining = max(0, race_distance - leader_dist)
@@ -1605,13 +1282,113 @@ class UmaRacingGUI(QMainWindow):
             current_speed = self.calculate_current_speed(leader_name, uma_stat, race_distance, self.sim_data['race_type'])
             speed_kmh = current_speed * 3.6
             
-            self.remaining_label.setText(f"Remaining: {remaining:.0f}m | Lead: {speed_kmh:.1f} km/h")
+            # === BARU: Tampilkan status dueling ===
+            status_text = f"Remaining: {remaining:.0f}m | Lead: {speed_kmh:.1f} km/h"
+            if self.duel_active:
+                status_text += " | DUEL ACTIVE!"
+            self.remaining_label.config(text=status_text)
+        
+        # Group umas by x position to calculate vertical stacking
+        position_groups = {}
+        ball_radius = 10 if len(self.uma_icons) > 10 else 14
+        
+        # === PERBAIKAN BUG 1 (Bagian 1) ===
+        # Buat daftar nama yang ada di frame_positions untuk pengecekan cepat
+        names_in_frame = [pos[0] for pos in frame_positions]
+        
+        for name, (circle, number_text, name_text) in self.uma_icons.items():
+            # Jika kuda tidak ada di frame_positions (seharusnya tidak terjadi lagi, tapi sebagai pengaman)
+            if name not in names_in_frame:
+                self.canvas.coords(circle, -100, -100, -100, -100)
+                self.canvas.coords(number_text, -100, -100)
+                self.canvas.coords(name_text, -100, -100)
+                continue
+            
+            distance = 0
+            for n, d in frame_positions:
+                if n == name:
+                    distance = d
+                    break
+            
+            # Kuda yang finish/DNF akan memiliki progress >= 1.0
+            progress = min(1.0, distance / race_distance)
+            x_pos = self.track_margin + (progress * track_width)
+            
+            # Group by x position
+            x_key = round(x_pos / 5) * 5
+            if x_key not in position_groups:
+                position_groups[x_key] = []
+            position_groups[x_key].append((name, x_pos))
+        
+        # Now position each uma with proper vertical spacing
+        for name, (circle, number_text, name_text) in self.uma_icons.items():
+            if name not in names_in_frame:
+                continue
+            
+            distance = 0
+            position_in_race = 0
+            # === PERBAIKAN BUG 1 (Bagian 2) ===
+            # Kita bisa mengandalkan frame_positions untuk mendapatkan jarak
+            # dan posisi, karena sekarang SELALU berisi SEMUA kuda.
+            for i, (n, d) in enumerate(frame_positions):
+                if n == name:
+                    distance = d
+                    position_in_race = i
+                    break
+            
+            progress = min(1.0, distance / race_distance)
+            x_pos = self.track_margin + (progress * track_width)
+            x_key = round(x_pos / 5) * 5
+            
+            # Calculate vertical offset based on position in the group
+            group = position_groups.get(x_key, [])
+            y_offset = 0
+            
+            # === PERBAIKAN BUG 1 (Bagian 3) ===
+            # Logika .index() sekarang aman karena frame_positions berisi semua nama
+            group_sorted = sorted(group, key=lambda x: names_in_frame.index(x[0]))
+            
+            if name in [g[0] for g in group_sorted]:
+                idx = [g[0] for g in group_sorted].index(name)
+                if len(group_sorted) == 1:
+                    y_offset = 0
+                else:
+                    total_height = (len(group_sorted) - 1) * (ball_radius * 2 + 6)
+                    y_offset = (idx * (ball_radius * 2 + 6)) - (total_height / 2)
+            
+            y_pos = track_y + y_offset
+            
+            self.canvas.coords(circle, x_pos - ball_radius, y_pos - ball_radius, x_pos + ball_radius, y_pos + ball_radius)
+            self.canvas.coords(number_text, x_pos, y_pos)
+            
+            # === PERUBAHAN VISUAL (Meniru Video) ===
+            # Hapus label nama untuk Top 3, karena tidak ada di video
+            self.canvas.coords(name_text, -100, -100)
+            
+            # Color coding based on status
+            if self.uma_finished[name]:
+                self.canvas.itemconfig(circle, fill='#FFD700', outline='white')
+            elif self.uma_dnf[name]['dnf']:
+                self.canvas.itemconfig(circle, fill='#333333', outline='white')
+            elif self.uma_incidents[name]['type']:
+                self.canvas.itemconfig(circle, fill='#FF6600', outline='white')
+            elif name in self.duel_participants and self.duel_active:
+                # === BARU: Warna khusus untuk peserta dueling ===
+                self.canvas.itemconfig(circle, fill='#FF0000', outline='white')  # Merah untuk dueling
+            else:
+                self.canvas.itemconfig(circle, fill=self.uma_colors[name], outline='white')
+        
+        self.canvas.update()
 
     def stop_simulation(self):
         """Stop the simulation"""
+        if self.sim_after_id:
+            self.after_cancel(self.sim_after_id)
+            self.sim_after_id = None
+            
         self.sim_running = False
-        self.start_btn.setEnabled(True)
-        self.stop_btn.setEnabled(False)
+        self.start_btn.config(state='normal')
+        self.stop_btn.config(state='disabled')
         self.append_output("Simulation stopped.\n")
 
     def reset_simulation(self):
@@ -1635,11 +1412,13 @@ class UmaRacingGUI(QMainWindow):
         self.uma_stamina.clear()
         self.uma_dnf.clear()
         
-        # Clear dueling system
-        self.uma_duels.clear()
-        self.duel_history.clear()
-        self.uma_last_spurt_duel.clear()
-        self.last_spurt_duels_activated.clear()
+        # === BARU: Reset variabel dueling ===
+        self.duel_active = False
+        self.duel_participants.clear()
+        self.duel_start_time = 0
+        self.duel_commentary_made = False
+        self.duel_guts_used.clear()
+        self.duel_stamina_boost_used.clear()
         
         self.distance_callouts_made.clear()
         self.last_incident_commentary = 0
@@ -1647,13 +1426,16 @@ class UmaRacingGUI(QMainWindow):
         self.last_speed_commentary = 0
         self.commentary_history.clear()
         
-        self.output_text.clear()
-        self.remaining_label.setText("Remaining: -- | Lead: -- km/h")
+        self.output_text.delete(1.0, tk.END)
+        self.remaining_label.config(text="Remaining: -- | Lead: -- km/h")
         
         if self.sim_data:
             self.initialize_uma_icons()
         
+        # === BARU: Hapus penanda jarak saat reset ===
         self.distance_markers_drawn.clear()
+        self.canvas.delete("distance_marker")
+        
         self.draw_track()
         self.append_output("Simulation reset.\n")
 
@@ -1680,37 +1462,6 @@ class UmaRacingGUI(QMainWindow):
                 gate_num = self.gate_numbers.get(name, "?")
                 self.append_output(f"- [{gate_num}] {name} (DNF at {dnf_data['dnf_distance']:.0f}m - {dnf_data['reason']})\n")
         
-        # Display duel statistics
-        if self.duel_history:
-            self.append_output("\nDUEL STATISTICS:\n")
-            total_duels = len(self.duel_history)
-            completed_duels = [d for d in self.duel_history if 'end_time' in d]
-            
-            if completed_duels:
-                avg_duration = sum(d['end_time'] - d['start_time'] for d in completed_duels) / len(completed_duels)
-                self.append_output(f"Total duels: {total_duels}\n")
-                self.append_output(f"Average duel duration: {avg_duration:.1f}s\n")
-                
-                # Most intense duel
-                if completed_duels:
-                    most_intense = max(completed_duels, key=lambda x: x.get('intensity', 0))
-                    uma1 = most_intense['uma1']
-                    uma2 = most_intense['uma2']
-                    gate1 = self.gate_numbers.get(uma1, "?")
-                    gate2 = self.gate_numbers.get(uma2, "?")
-                    intensity = most_intense.get('intensity', 0)
-                    self.append_output(f"Most intense duel: #{gate1} {uma1} vs #{gate2} {uma2} (intensity: {intensity:.2f})\n")
-                
-                # Guts-powered duels
-                guts_duels = [d for d in completed_duels if d.get('guts_powered', False)]
-                if guts_duels:
-                    self.append_output(f"Guts-powered duels: {len(guts_duels)}\n")
-            
-            # Last spurt duels
-            last_spurt_count = len(self.last_spurt_duels_activated)
-            if last_spurt_count > 0:
-                self.append_output(f"Last spurt duels activated: {last_spurt_count}\n")
-        
         total_starters = len(self.uma_icons)
         total_finished = len(finished_umas)
         total_dnf = len(dnf_umas)
@@ -1733,7 +1484,7 @@ class UmaRacingGUI(QMainWindow):
 
     def show_stat_priorities(self):
         """Display stat priorities for each running style"""
-        self.output_text.clear()
+        self.output_text.delete(1.0, tk.END)
         self.append_output("UMA MUSUME STAT PRIORITIES BY RUNNING STYLE\n")
         self.append_output("="*50 + "\n\n")
 
@@ -1782,17 +1533,15 @@ class UmaRacingGUI(QMainWindow):
             self.append_output("\n")
 
         self.append_output("NOTE: Top 3 stats are vital - lacking any can severely decrease performance.\n")
-        self.append_output("Guts plays a special role in duels - high Guts umas can use it as stamina backup\n")
-        self.append_output("during last spurt duels (around 1000m remaining) and break from crowded packs.\n")
+        self.append_output("The remaining 2 stats provide slight performance boosts if sufficiently high.\n")
         self.append_output("These priorities are now applied to simulation calculations for realistic performance.\n")
 
     def append_output(self, text):
         """Append text to output area"""
-        self.output_text.append(text.rstrip('\n'))
-
+        self.output_text.insert(tk.END, text)
+        self.output_text.see(tk.END)
+        self.update()
 
 if __name__ == "__main__":
-    app = QApplication([])
-    window = UmaRacingGUI()
-    window.show()
-    app.exec()
+    app = UmaRacingGUI()
+    app.mainloop()
