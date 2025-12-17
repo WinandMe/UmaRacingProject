@@ -96,7 +96,7 @@ class UmaConfigGenerator:
         ttk.Label(stats_frame, text="Speed:").grid(row=0, column=0, sticky=tk.W)
         self.speed_entry = ttk.Entry(stats_frame, textvariable=self.speed_var, width=10)
         self.speed_entry.grid(row=0, column=1, sticky=tk.W, padx=(5, 0))
-        self.uma_speed = ttk.Scale(stats_frame, from_=0, to=1200, orient=tk.HORIZONTAL, length=150)
+        self.uma_speed = ttk.Scale(stats_frame, from_=0, to=3500, orient=tk.HORIZONTAL, length=150)
         self.uma_speed.grid(row=0, column=2, sticky=tk.W, padx=(5, 0))
         self.speed_value = ttk.Label(stats_frame, text="600")
         self.speed_value.grid(row=0, column=3, padx=(5, 0))
@@ -106,7 +106,7 @@ class UmaConfigGenerator:
         ttk.Label(stats_frame, text="Stamina:").grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
         self.stamina_entry = ttk.Entry(stats_frame, textvariable=self.stamina_var, width=10)
         self.stamina_entry.grid(row=1, column=1, sticky=tk.W, padx=(5, 0), pady=(5, 0))
-        self.uma_stamina = ttk.Scale(stats_frame, from_=0, to=1200, orient=tk.HORIZONTAL, length=150)
+        self.uma_stamina = ttk.Scale(stats_frame, from_=0, to=3500, orient=tk.HORIZONTAL, length=150)
         self.uma_stamina.grid(row=1, column=2, sticky=tk.W, padx=(5, 0), pady=(5, 0))
         self.stamina_value = ttk.Label(stats_frame, text="600")
         self.stamina_value.grid(row=1, column=3, padx=(5, 0), pady=(5, 0))
@@ -116,7 +116,7 @@ class UmaConfigGenerator:
         ttk.Label(stats_frame, text="Power:").grid(row=0, column=4, sticky=tk.W, padx=(20, 0))
         self.power_entry = ttk.Entry(stats_frame, textvariable=self.power_var, width=10)
         self.power_entry.grid(row=0, column=5, sticky=tk.W, padx=(5, 0))
-        self.uma_power = ttk.Scale(stats_frame, from_=0, to=1200, orient=tk.HORIZONTAL, length=150)
+        self.uma_power = ttk.Scale(stats_frame, from_=0, to=3500, orient=tk.HORIZONTAL, length=150)
         self.uma_power.grid(row=0, column=6, sticky=tk.W, padx=(5, 0))
         self.power_value = ttk.Label(stats_frame, text="600")
         self.power_value.grid(row=0, column=7, padx=(5, 0))
@@ -126,7 +126,7 @@ class UmaConfigGenerator:
         ttk.Label(stats_frame, text="Guts:").grid(row=1, column=4, sticky=tk.W, padx=(20, 0), pady=(5, 0))
         self.guts_entry = ttk.Entry(stats_frame, textvariable=self.guts_var, width=10)
         self.guts_entry.grid(row=1, column=5, sticky=tk.W, padx=(5, 0), pady=(5, 0))
-        self.uma_guts = ttk.Scale(stats_frame, from_=0, to=1200, orient=tk.HORIZONTAL, length=150)
+        self.uma_guts = ttk.Scale(stats_frame, from_=0, to=3500, orient=tk.HORIZONTAL, length=150)
         self.uma_guts.grid(row=1, column=6, sticky=tk.W, padx=(5, 0), pady=(5, 0))
         self.guts_value = ttk.Label(stats_frame, text="600")
         self.guts_value.grid(row=1, column=7, padx=(5, 0), pady=(5, 0))
@@ -136,7 +136,7 @@ class UmaConfigGenerator:
         ttk.Label(stats_frame, text="Wisdom:").grid(row=0, column=8, sticky=tk.W, padx=(20, 0))
         self.wisdom_entry = ttk.Entry(stats_frame, textvariable=self.wisdom_var, width=10)
         self.wisdom_entry.grid(row=0, column=9, sticky=tk.W, padx=(5, 0))
-        self.uma_wisdom = ttk.Scale(stats_frame, from_=0, to=1200, orient=tk.HORIZONTAL, length=150)
+        self.uma_wisdom = ttk.Scale(stats_frame, from_=0, to=3500, orient=tk.HORIZONTAL, length=150)
         self.uma_wisdom.grid(row=0, column=10, sticky=tk.W, padx=(5, 0))
         self.wisdom_value = ttk.Label(stats_frame, text="600")
         self.wisdom_value.grid(row=0, column=11, padx=(5, 0))
@@ -241,14 +241,14 @@ class UmaConfigGenerator:
             {
                 "name": "King Argentine",
                 "running_style": "FR",
-                "stats": {"Speed": 1200, "Stamina": 1200, "Power": 1200, "Guts": 1200, "Wit": 1200},
+                "stats": {"Speed": 3500, "Stamina": 3500, "Power": 3500, "Guts": 3500, "Wit": 3500},
                 "distance_aptitude": {"Sprint": "A", "Mile": "A", "Medium": "A", "Long": "A"},
                 "surface_aptitude": {"Dirt": "A", "Turf": "A"}
             },
             {
                 "name": "Prince Loupan",
                 "running_style": "PC",
-                "stats": {"Speed": 1200, "Stamina": 1200, "Power": 1200, "Guts": 1200, "Wit": 1200},
+                "stats": {"Speed": 3500, "Stamina": 3500, "Power": 3500, "Guts": 3500, "Wit": 3500},
                 "distance_aptitude": {"Sprint": "A", "Mile": "A", "Medium": "A", "Long": "A"},
                 "surface_aptitude": {"Dirt": "A", "Turf": "A"}
             }

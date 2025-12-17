@@ -26,6 +26,7 @@ class RaceCanvasWidget(QWidget):
         self.uma_incidents = {}
         self.uma_colors = {}
         self.gate_numbers = {}
+        self.duel_participants = set()  # === BARU: Tambahkan duel participants ===
     
     def paintEvent(self, event):
         """Paint the race track"""
@@ -111,6 +112,10 @@ class RaceCanvasWidget(QWidget):
                     elif self.uma_incidents.get(name, {}).get('type'):
                         color = QColor('#FF6600')  # Orange for incident
                         outline = QColor('white')
+                    # === BARU: Warna khusus untuk peserta dueling ===
+                    elif name in self.duel_participants:
+                        color = QColor('#FF0000')  # Merah untuk dueling
+                        outline = QColor('white')
                     else:
                         color = QColor(self.uma_colors.get(name, '#fdbf24'))
                         outline = QColor('#c89600')
@@ -132,7 +137,7 @@ class RaceCanvasWidget(QWidget):
                                     Qt.AlignmentFlag.AlignCenter, str(gate_num))
     
     def update_display(self, sim_data, uma_distances, uma_finished, uma_dnf, 
-                      uma_incidents, uma_colors, gate_numbers, track_margin):
+                      uma_incidents, uma_colors, gate_numbers, track_margin, duel_participants=None):
         """Update display data"""
         self.sim_data = sim_data
         self.uma_distances = uma_distances
@@ -142,6 +147,9 @@ class RaceCanvasWidget(QWidget):
         self.uma_colors = uma_colors
         self.gate_numbers = gate_numbers
         self.track_margin = track_margin
+        # === BARU: Update duel participants ===
+        if duel_participants is not None:
+            self.duel_participants = duel_participants
         self.update()
 
 
@@ -1409,7 +1417,8 @@ class UmaRacingGUI(QMainWindow):
             self.uma_incidents,
             self.uma_colors,
             self.gate_numbers,
-            self.track_margin
+            self.track_margin,
+            self.duel_participants  # === BARU: Kirim duel participants ke canvas ===
         )
         
         # Update status labels
