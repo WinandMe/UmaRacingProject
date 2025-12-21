@@ -60,7 +60,7 @@ UmaRacingProject/
 
 ├── src/ # Stable, production-ready versions
 
-│ ├── UmaRacingGUI.py # Primary GUI simulator (V3)
+│ ├── UmaRacingGUI.py # Primary GUI simulator
 
 │ └── UmaConfigGenerator.py # Compatible configuration generator
 
@@ -116,70 +116,45 @@ Everything runs with the Python standard library.
 
 ------------------------------------------------------------------------
 
-## ⚖️ License --- MIT
+## ⚖️ License
 
-This project uses the **MIT License**, allowing you to:
+**Copyright © WinandMe**
 
-✔ Use for any purpose\
-✔ Modify the code\
-✔ Distribute it\
-✔ Incorporate it into other projects (including commercial work)
+This project is **source-available**, not open-source.
 
-You must include the MIT License text in any distributed version.
+You may view the source code for educational and review purposes.
 
-The software is provided **as-is**, with no warranty.
+❌ You may NOT:
+- Modify the code
+- Redistribute the code
+- Use the simulator in other projects
+- Fork or rehost the project
+- Use it in public communities or events
 
-------------------------------------------------------------------------
+…unless you have **explicit permission from the author**.
 
-## ⚠️ Responsible Use & Community Restrictions (Non-binding with MIT License)
+### Approved Contributors
+The following individuals are permitted to modify and use this project:
+- Ilfaust-Rembrandt
 
-This project is released under the MIT License, which allows anyone to use, modify, and distribute the software freely.
-However, the author sets the following expectations and community restrictions regarding responsible use, especially in online roleplay groups:
-
-This simulator is not intended for deceptive, manipulative, or coercive use in any community, moderation action, or leadership role.
-If you use it in a roleplay group, you agree to do so transparently and with consent from that group’s members.
-
-The simulator must not be used to pressure, influence, or recruit developers, nor to claim community ownership over contributors or their work.
-
-Any forks or modified versions must not present themselves as the “official” version without explicit permission from the author.
-
-## Do not use this project to impersonate the author, extract private community information, or misrepresent development intentions.
-
-Community rules may override usage expectations within specific Discord, Reddit, or forum environments.
-These rules do not override MIT rights but apply to social spaces where the project is used.
-
-The author is not responsible for:
-
--   community drama or conflicts arising from simulator results
-
--   misinterpretation of race outcomes
-
--   misuse in competitive or political RP settings
-
--   “powergaming,” “godmodding,” or unfair RP tactics by users
-
--   If you use this project publicly, you agree to credit the author and avoid misrepresenting changes or results as endorsed by the original developer.
-
--   These restrictions describe intended use and community expectations, but they do not alter the rights granted by the MIT License.
+Any other usage requires direct consent from the author.
 ------------------------------------------------------------------------
 
 ## 🤝 Contributions
 
-To contribute:
+This project accepts contributions **by invitation or prior discussion only**.
 
-1.  Open an Issue describing your request or bug.
-2.  Submit a Pull Request with clear explanations.
-3.  Follow clean, readable coding practices.
+If you wish to contribute:
+1. Open an Issue to discuss the idea first
+2. Wait for explicit approval before submitting changes
 
-Contributions of all skill levels are welcome.
+Unauthorized pull requests may be declined.
 
 ------------------------------------------------------------------------
 
 ## 📬 Contact
 
-For any project-related communication, please use **GitHub Issues**.\
-This helps keep discussions public, transparent, and organized.
+For licensing, permissions, or usage requests, please contact the author via GitHub Issues.
+
 
 ------------------------------------------------------------------------
-
-Thank you for using the Uma Racing Simulator --- and have fun racing!
