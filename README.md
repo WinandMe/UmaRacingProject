@@ -2,7 +2,8 @@
 
 A Python-based racing simulator inspired by Uma Musume, featuring a graphical interface, customizable race parameters, detailed commentary generation, and aptitude-based race calculations.
 
-Note: Portions of this project were developed using AI-assisted coding, as the author is still learning. Constructive feedback and contributions are always welcome.
+> ⚠️ This project is source-available, not open-source.
+> Usage requires explicit permission from the author.
 
 ## Overview
 
@@ -27,7 +28,7 @@ generator, and experimental prototypes for future expansions.
 
 > **Note:** Parts of this project were developed with AI-assisted coding
 > as the author continues to learn.\
-> Contributions, feedback, and improvements are always welcome.
+> feedbacks are always welcome.
 
 ------------------------------------------------------------------------
 
@@ -138,6 +139,10 @@ The following individuals are permitted to modify and use this project:
 - Ilfaust-Rembrandt
 
 Any other usage requires direct consent from the author.
+
+See the `LICENSE` file for full terms.
+
+
 ------------------------------------------------------------------------
 
 ## 🤝 Contributions
