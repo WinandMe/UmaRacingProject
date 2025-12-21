@@ -4,6 +4,7 @@ A Python-based racing simulator inspired by Uma Musume, featuring a graphical in
 
 > ⚠️ This project is source-available, not open-source.
 > Usage requires explicit permission from the author.
+> Forking does not grant permission to use, run, or distribute the simulator without explicit authorization from the author.
 
 ## Overview
 
