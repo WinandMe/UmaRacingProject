@@ -1,0 +1,36 @@
+{
+  "race": {
+    "name": "Arima Kinen",
+    "name_jp": "有馬記念",
+    "distance": 2500,
+    "type": "Long",
+    "surface": "Turf",
+    "racecourse": "Nakayama",
+    "direction": "Right",
+    "season": "Winter"
+  },
+  "umas": [
+    {
+      "name": "Test Uma 1",
+      "stats": {
+        "Speed": 1000,
+        "Stamina": 1000,
+        "Power": 900,
+        "Guts": 800,
+        "Wit": 700
+      },
+      "running_style": "LS"
+    },
+    {
+      "name": "Test Uma 2",
+      "stats": {
+        "Speed": 950,
+        "Stamina": 1050,
+        "Power": 850,
+        "Guts": 750,
+        "Wit": 750
+      },
+      "running_style": "PC"
+    }
+  ]
+}

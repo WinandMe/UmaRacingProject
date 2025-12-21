@@ -3,6 +3,28 @@ from tkinter import ttk, filedialog, messagebox, scrolledtext
 import json
 import os
 
+# Import skills system
+try:
+    from skills import (
+        SKILLS_DATABASE, get_skill_by_id, get_skill_categories,
+        SkillRarity, RunningStyleRequirement
+    )
+    SKILLS_AVAILABLE = True
+except ImportError:
+    SKILLS_AVAILABLE = False
+    print("Warning: skills.py not found. Skills feature will be disabled.")
+
+# Import races system
+try:
+    from races import (
+        G1_RACES, get_race_by_id, get_race_categories, get_race_season,
+        Race, RaceType, Surface, Racecourse, Direction
+    )
+    RACES_AVAILABLE = True
+except ImportError:
+    RACES_AVAILABLE = False
+    print("Warning: races.py not found. G1 race selection will be disabled.")
+
 class UmaConfigGenerator:
     def __init__(self, root):
         self.root = root
@@ -11,6 +33,9 @@ class UmaConfigGenerator:
 
         self.umas = []
         self.current_uma_index = None
+        
+        # Selected skills for current Uma
+        self.selected_skills = []
 
         # Stat variables for precise input
         self.speed_var = tk.StringVar(value="600")
@@ -39,25 +64,67 @@ class UmaConfigGenerator:
         race_frame = ttk.LabelFrame(main_frame, text="Race Configuration", padding="5")
         race_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
         
-        ttk.Label(race_frame, text="Race Name:").grid(row=0, column=0, sticky=tk.W)
-        self.race_name = ttk.Entry(race_frame, width=20)
-        self.race_name.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(5, 0))
-        self.race_name.insert(0, "Arima Kinen")
+        # G1 Race Selection (if races module available)
+        if RACES_AVAILABLE:
+            ttk.Label(race_frame, text="G1 Race:").grid(row=0, column=0, sticky=tk.W)
+            
+            # Race category dropdown
+            self.race_category = ttk.Combobox(race_frame, values=list(get_race_categories().keys()), width=18, state="readonly")
+            self.race_category.grid(row=0, column=1, sticky=tk.W, padx=(5, 0))
+            self.race_category.bind("<<ComboboxSelected>>", self.on_race_category_change)
+            if get_race_categories():
+                self.race_category.set(list(get_race_categories().keys())[2])  # Default to Medium
+            
+            # Race selection dropdown
+            self.race_selection = ttk.Combobox(race_frame, width=35, state="readonly")
+            self.race_selection.grid(row=0, column=2, columnspan=2, sticky=tk.W, padx=(5, 0))
+            self.race_selection.bind("<<ComboboxSelected>>", self.on_race_select)
+            
+            # Race info display
+            self.race_info_label = ttk.Label(race_frame, text="", foreground="blue")
+            self.race_info_label.grid(row=1, column=0, columnspan=4, sticky=tk.W, pady=(5, 0))
+            
+            # Initialize race list
+            self.on_race_category_change()
+            
+            # Hidden variables to store actual values (populated from race selection)
+            self.selected_race_id = None
+        else:
+            # Fallback to manual entry if races module not available
+            ttk.Label(race_frame, text="Race Name:").grid(row=0, column=0, sticky=tk.W)
+            self.race_name = ttk.Entry(race_frame, width=20)
+            self.race_name.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(5, 0))
+            self.race_name.insert(0, "Arima Kinen")
+            
+            ttk.Label(race_frame, text="Distance (m):").grid(row=0, column=2, sticky=tk.W, padx=(10, 0))
+            self.race_distance = ttk.Entry(race_frame, width=10)
+            self.race_distance.grid(row=0, column=3, sticky=tk.W, padx=(5, 0))
+            self.race_distance.insert(0, "2500")
+            
+            ttk.Label(race_frame, text="Type:").grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
+            self.race_type = ttk.Combobox(race_frame, values=["Sprint", "Mile", "Medium", "Long"], width=10)
+            self.race_type.grid(row=1, column=1, sticky=tk.W, padx=(5, 0), pady=(5, 0))
+            self.race_type.set("Long")
+            
+            ttk.Label(race_frame, text="Surface:").grid(row=1, column=2, sticky=tk.W, padx=(10, 0), pady=(5, 0))
+            self.race_surface = ttk.Combobox(race_frame, values=["Turf", "Dirt"], width=10)
+            self.race_surface.grid(row=1, column=3, sticky=tk.W, padx=(5, 0), pady=(5, 0))
+            self.race_surface.set("Turf")
         
-        ttk.Label(race_frame, text="Distance (m):").grid(row=0, column=2, sticky=tk.W, padx=(10, 0))
-        self.race_distance = ttk.Entry(race_frame, width=10)
-        self.race_distance.grid(row=0, column=3, sticky=tk.W, padx=(5, 0))
-        self.race_distance.insert(0, "2500")
+        # Track condition row (always shown)
+        row_offset = 2 if RACES_AVAILABLE else 2
+        ttk.Label(race_frame, text="Track Condition:").grid(row=row_offset, column=0, sticky=tk.W, pady=(5, 0))
+        self.track_condition = ttk.Combobox(race_frame, values=["Firm", "Good", "Soft", "Heavy"], width=10, state="readonly")
+        self.track_condition.grid(row=row_offset, column=1, sticky=tk.W, padx=(5, 0), pady=(5, 0))
+        self.track_condition.set("Good")
         
-        ttk.Label(race_frame, text="Type:").grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
-        self.race_type = ttk.Combobox(race_frame, values=["Sprint", "Mile", "Medium", "Long"], width=10)
-        self.race_type.grid(row=1, column=1, sticky=tk.W, padx=(5, 0), pady=(5, 0))
-        self.race_type.set("Long")
+        ttk.Label(race_frame, text="Stat Threshold:").grid(row=row_offset, column=2, sticky=tk.W, padx=(10, 0), pady=(5, 0))
+        self.stat_threshold = ttk.Entry(race_frame, width=10)
+        self.stat_threshold.grid(row=row_offset, column=3, sticky=tk.W, padx=(5, 0), pady=(5, 0))
+        self.stat_threshold.insert(0, "0")
         
-        ttk.Label(race_frame, text="Surface:").grid(row=1, column=2, sticky=tk.W, padx=(10, 0), pady=(5, 0))
-        self.race_surface = ttk.Combobox(race_frame, values=["Turf", "Dirt"], width=10)
-        self.race_surface.grid(row=1, column=3, sticky=tk.W, padx=(5, 0), pady=(5, 0))
-        self.race_surface.set("Turf")
+        # Tooltip for stat threshold
+        ttk.Label(race_frame, text="(0 = none, 300+ gives speed bonus)").grid(row=row_offset, column=4, sticky=tk.W, padx=(5, 0), pady=(5, 0))
         
         # Uma management
         uma_mgmt_frame = ttk.LabelFrame(main_frame, text="Uma Management", padding="5")
@@ -181,7 +248,45 @@ class UmaConfigGenerator:
         self.apt_dirt.grid(row=1, column=4, sticky=tk.W, padx=(5, 0), pady=(5, 0))
         self.apt_dirt.set("B")
 
-
+        # Skills section (only if skills module is available)
+        if SKILLS_AVAILABLE:
+            skills_frame = ttk.LabelFrame(uma_frame, text="Skills (Max 6)", padding="5")
+            skills_frame.grid(row=3, column=0, columnspan=4, sticky=(tk.W, tk.E), pady=(10, 0))
+            
+            # Skills category selection
+            ttk.Label(skills_frame, text="Category:").grid(row=0, column=0, sticky=tk.W)
+            self.skill_category = ttk.Combobox(skills_frame, values=list(get_skill_categories().keys()), width=20)
+            self.skill_category.grid(row=0, column=1, sticky=tk.W, padx=(5, 0))
+            self.skill_category.bind("<<ComboboxSelected>>", self.on_skill_category_change)
+            if get_skill_categories():
+                self.skill_category.set(list(get_skill_categories().keys())[0])
+            
+            # Available skills listbox
+            ttk.Label(skills_frame, text="Available:").grid(row=1, column=0, sticky=tk.NW, pady=(5, 0))
+            self.available_skills_listbox = tk.Listbox(skills_frame, height=6, width=30, selectmode=tk.SINGLE)
+            self.available_skills_listbox.grid(row=1, column=1, sticky=tk.W, padx=(5, 0), pady=(5, 0))
+            
+            # Add/Remove buttons
+            btn_frame = ttk.Frame(skills_frame)
+            btn_frame.grid(row=1, column=2, padx=10)
+            ttk.Button(btn_frame, text="Add >>", command=self.add_skill).grid(row=0, column=0, pady=2)
+            ttk.Button(btn_frame, text="<< Remove", command=self.remove_skill).grid(row=1, column=0, pady=2)
+            
+            # Selected skills listbox
+            ttk.Label(skills_frame, text="Equipped:").grid(row=1, column=3, sticky=tk.NW, pady=(5, 0))
+            self.equipped_skills_listbox = tk.Listbox(skills_frame, height=6, width=30, selectmode=tk.SINGLE)
+            self.equipped_skills_listbox.grid(row=1, column=4, sticky=tk.W, padx=(5, 0), pady=(5, 0))
+            
+            # Skill description label
+            self.skill_desc_label = ttk.Label(skills_frame, text="", wraplength=500, foreground="gray")
+            self.skill_desc_label.grid(row=2, column=0, columnspan=5, sticky=tk.W, pady=(5, 0))
+            
+            # Bind selection to show description
+            self.available_skills_listbox.bind("<<ListboxSelect>>", self.on_skill_select)
+            self.equipped_skills_listbox.bind("<<ListboxSelect>>", self.on_equipped_skill_select)
+            
+            # Initialize available skills list
+            self.on_skill_category_change()
 
         # Save/load buttons
         ttk.Button(uma_frame, text="Save Uma", command=self.save_uma).grid(row=4, column=0, pady=(10, 0))
@@ -235,6 +340,151 @@ class UmaConfigGenerator:
         except ValueError:
             pass  # Ignore invalid input
 
+    def on_race_category_change(self, event=None):
+        """Update race selection dropdown when category changes"""
+        if not RACES_AVAILABLE:
+            return
+        
+        category = self.race_category.get()
+        categories = get_race_categories()
+        
+        if category in categories:
+            race_ids = categories[category]
+            race_names = []
+            for race_id in race_ids:
+                race = get_race_by_id(race_id)
+                if race:
+                    race_names.append(f"{race.name} ({race.distance}m)")
+            
+            self.race_selection['values'] = race_names
+            if race_names:
+                self.race_selection.set(race_names[0])
+                self.on_race_select()
+    
+    def on_race_select(self, event=None):
+        """Update race info when a race is selected"""
+        if not RACES_AVAILABLE:
+            return
+        
+        category = self.race_category.get()
+        categories = get_race_categories()
+        
+        if category in categories:
+            selection_idx = self.race_selection.current()
+            if selection_idx >= 0 and selection_idx < len(categories[category]):
+                race_id = categories[category][selection_idx]
+                race = get_race_by_id(race_id)
+                if race:
+                    self.selected_race_id = race_id
+                    season = get_race_season(race)
+                    direction = "Right-handed" if race.direction.value == "Right" else "Left-handed"
+                    info = f"📍 {race.racecourse.value} | {race.surface.value} | {direction} | {season} | {race.race_type.value}"
+                    self.race_info_label.config(text=info)
+
+    def on_skill_category_change(self, event=None):
+        """Update available skills list when category changes"""
+        if not SKILLS_AVAILABLE:
+            return
+        
+        self.available_skills_listbox.delete(0, tk.END)
+        
+        category = self.skill_category.get()
+        categories = get_skill_categories()
+        
+        if category in categories:
+            for skill_id in categories[category]:
+                skill = get_skill_by_id(skill_id)
+                if skill:
+                    # Show rarity indicator
+                    rarity_icon = "◯" if skill.rarity == SkillRarity.WHITE else "◎"
+                    self.available_skills_listbox.insert(tk.END, f"{rarity_icon} {skill.name}")
+    
+    def on_skill_select(self, event=None):
+        """Show skill description when selected in available list"""
+        if not SKILLS_AVAILABLE:
+            return
+        
+        selection = self.available_skills_listbox.curselection()
+        if selection:
+            idx = selection[0]
+            category = self.skill_category.get()
+            categories = get_skill_categories()
+            
+            if category in categories and idx < len(categories[category]):
+                skill_id = categories[category][idx]
+                skill = get_skill_by_id(skill_id)
+                if skill:
+                    self.skill_desc_label.config(text=f"{skill.icon} {skill.description}")
+    
+    def on_equipped_skill_select(self, event=None):
+        """Show skill description when selected in equipped list"""
+        if not SKILLS_AVAILABLE:
+            return
+        
+        selection = self.equipped_skills_listbox.curselection()
+        if selection:
+            idx = selection[0]
+            if idx < len(self.selected_skills):
+                skill_id = self.selected_skills[idx]
+                skill = get_skill_by_id(skill_id)
+                if skill:
+                    self.skill_desc_label.config(text=f"{skill.icon} {skill.description}")
+    
+    def add_skill(self):
+        """Add selected skill to equipped list"""
+        if not SKILLS_AVAILABLE:
+            return
+        
+        if len(self.selected_skills) >= 6:
+            messagebox.showwarning("Limit Reached", "Maximum 6 skills per Uma!")
+            return
+        
+        selection = self.available_skills_listbox.curselection()
+        if not selection:
+            return
+        
+        idx = selection[0]
+        category = self.skill_category.get()
+        categories = get_skill_categories()
+        
+        if category in categories and idx < len(categories[category]):
+            skill_id = categories[category][idx]
+            
+            # Check if already equipped
+            if skill_id in self.selected_skills:
+                messagebox.showwarning("Already Equipped", "This skill is already equipped!")
+                return
+            
+            skill = get_skill_by_id(skill_id)
+            if skill:
+                self.selected_skills.append(skill_id)
+                rarity_icon = "◯" if skill.rarity == SkillRarity.WHITE else "◎"
+                self.equipped_skills_listbox.insert(tk.END, f"{rarity_icon} {skill.name}")
+    
+    def remove_skill(self):
+        """Remove selected skill from equipped list"""
+        if not SKILLS_AVAILABLE:
+            return
+        
+        selection = self.equipped_skills_listbox.curselection()
+        if selection:
+            idx = selection[0]
+            if idx < len(self.selected_skills):
+                self.selected_skills.pop(idx)
+                self.equipped_skills_listbox.delete(idx)
+    
+    def update_equipped_skills_display(self):
+        """Refresh the equipped skills listbox from selected_skills"""
+        if not SKILLS_AVAILABLE:
+            return
+        
+        self.equipped_skills_listbox.delete(0, tk.END)
+        for skill_id in self.selected_skills:
+            skill = get_skill_by_id(skill_id)
+            if skill:
+                rarity_icon = "◯" if skill.rarity == SkillRarity.WHITE else "◎"
+                self.equipped_skills_listbox.insert(tk.END, f"{rarity_icon} {skill.name}")
+
     def add_sample_umas(self):
         """Add some sample umas for testing"""
         sample_umas = [
@@ -243,14 +493,16 @@ class UmaConfigGenerator:
                 "running_style": "FR",
                 "stats": {"Speed": 3500, "Stamina": 3500, "Power": 3500, "Guts": 3500, "Wit": 3500},
                 "distance_aptitude": {"Sprint": "A", "Mile": "A", "Medium": "A", "Long": "A"},
-                "surface_aptitude": {"Dirt": "A", "Turf": "A"}
+                "surface_aptitude": {"Dirt": "A", "Turf": "A"},
+                "skills": ["escape_artist", "taking_the_lead", "breath_of_fresh_air"]
             },
             {
                 "name": "Prince Loupan",
                 "running_style": "PC",
                 "stats": {"Speed": 3500, "Stamina": 3500, "Power": 3500, "Guts": 3500, "Wit": 3500},
                 "distance_aptitude": {"Sprint": "A", "Mile": "A", "Medium": "A", "Long": "A"},
-                "surface_aptitude": {"Dirt": "A", "Turf": "A"}
+                "surface_aptitude": {"Dirt": "A", "Turf": "A"},
+                "skills": ["speed_star", "beeline_burst", "in_body_and_mind"]
             }
         ]
 
@@ -265,7 +517,8 @@ class UmaConfigGenerator:
             "running_style": "PC",
             "stats": {"Speed": 600, "Stamina": 600, "Power": 600, "Guts": 600, "Wit": 600},
             "distance_aptitude": {"Sprint": "B", "Mile": "B", "Medium": "B", "Long": "B"},
-            "surface_aptitude": {"Dirt": "B", "Turf": "B"}
+            "surface_aptitude": {"Dirt": "B", "Turf": "B"},
+            "skills": []
         }
 
         self.umas.append(new_uma)
@@ -322,6 +575,11 @@ class UmaConfigGenerator:
             self.apt_turf.set(surf_apt.get("Turf", "B"))
             self.apt_dirt.set(surf_apt.get("Dirt", "B"))
 
+            # Load skills
+            self.selected_skills = uma.get("skills", []).copy()
+            if SKILLS_AVAILABLE:
+                self.update_equipped_skills_display()
+
 
 
     def save_uma(self):
@@ -361,6 +619,9 @@ class UmaConfigGenerator:
             "Turf": self.apt_turf.get()
         }
         
+        # Update skills
+        uma["skills"] = self.selected_skills.copy()
+        
         # Update listbox
         self.uma_listbox.delete(self.current_uma_index)
         self.uma_listbox.insert(self.current_uma_index, uma["name"])
@@ -384,17 +645,59 @@ class UmaConfigGenerator:
         self.apt_long.set("B")
         self.apt_turf.set("B")
         self.apt_dirt.set("B")
+        # Reset skills
+        self.selected_skills = []
+        if SKILLS_AVAILABLE:
+            self.update_equipped_skills_display()
+            self.skill_desc_label.config(text="")
     
     def generate_config(self):
         """Generate JSON configuration"""
+        # Get stat threshold (default to 0 if invalid)
+        try:
+            stat_threshold_val = int(self.stat_threshold.get())
+        except ValueError:
+            stat_threshold_val = 0
+        
+        # Get race data from selected G1 race or manual entry
+        if RACES_AVAILABLE and hasattr(self, 'selected_race_id') and self.selected_race_id:
+            race = get_race_by_id(self.selected_race_id)
+            if race:
+                race_config = {
+                    "name": race.name,
+                    "name_jp": race.name_jp,
+                    "distance": race.distance,
+                    "type": race.race_type.value,
+                    "surface": race.surface.value,
+                    "racecourse": race.racecourse.value,
+                    "direction": race.direction.value,
+                    "track_condition": self.track_condition.get(),
+                    "stat_threshold": stat_threshold_val,
+                    "season": get_race_season(race),
+                    "month": race.month
+                }
+            else:
+                race_config = self._get_manual_race_config(stat_threshold_val)
+        else:
+            race_config = self._get_manual_race_config(stat_threshold_val)
+        
         config = {
-            "race": {
-                "name": self.race_name.get(),
-                "distance": int(self.race_distance.get()),
-                "type": self.race_type.get(),
-                "surface": self.race_surface.get()
-            },
+            "race": race_config,
             "umas": self.umas
+        }
+        
+        self.output_text.delete(1.0, tk.END)
+        self.output_text.insert(1.0, json.dumps(config, indent=4, ensure_ascii=False))
+    
+    def _get_manual_race_config(self, stat_threshold_val):
+        """Get race config from manual entry fields (fallback)"""
+        return {
+            "name": self.race_name.get() if hasattr(self, 'race_name') else "Custom Race",
+            "distance": int(self.race_distance.get()) if hasattr(self, 'race_distance') else 2000,
+            "type": self.race_type.get() if hasattr(self, 'race_type') else "Medium",
+            "surface": self.race_surface.get() if hasattr(self, 'race_surface') else "Turf",
+            "track_condition": self.track_condition.get(),
+            "stat_threshold": stat_threshold_val
         }
         
         self.output_text.delete(1.0, tk.END)
@@ -435,12 +738,54 @@ class UmaConfigGenerator:
                 
                 # Load race config
                 race = config.get("race", {})
-                self.race_name.delete(0, tk.END)
-                self.race_name.insert(0, race.get("name", ""))
-                self.race_distance.delete(0, tk.END)
-                self.race_distance.insert(0, str(race.get("distance", 2500)))
-                self.race_type.set(race.get("type", "Long"))
-                self.race_surface.set(race.get("surface", "Turf"))
+                
+                if RACES_AVAILABLE:
+                    # Try to find the race in G1 database by name
+                    race_name = race.get("name", "")
+                    found_race = None
+                    found_category = None
+                    
+                    for race_id, race_obj in G1_RACES.items():
+                        if race_obj.name == race_name:
+                            found_race = race_obj
+                            # Find the category
+                            for cat_name, cat_races in get_race_categories().items():
+                                if race_id in cat_races:
+                                    found_category = cat_name
+                                    break
+                            break
+                    
+                    if found_race and found_category:
+                        # Set the category and race selection
+                        self.race_category.set(found_category)
+                        self.on_race_category_change()
+                        
+                        # Find and select the race
+                        for i, race_id in enumerate(get_race_categories()[found_category]):
+                            if race_id == found_race.id:
+                                self.race_selection.current(i)
+                                self.on_race_select()
+                                break
+                    
+                    # Set track condition
+                    self.track_condition.set(race.get("track_condition", "Good"))
+                else:
+                    # Manual entry mode
+                    if hasattr(self, 'race_name'):
+                        self.race_name.delete(0, tk.END)
+                        self.race_name.insert(0, race.get("name", ""))
+                    if hasattr(self, 'race_distance'):
+                        self.race_distance.delete(0, tk.END)
+                        self.race_distance.insert(0, str(race.get("distance", 2500)))
+                    if hasattr(self, 'race_type'):
+                        self.race_type.set(race.get("type", "Long"))
+                    if hasattr(self, 'race_surface'):
+                        self.race_surface.set(race.get("surface", "Turf"))
+                    self.track_condition.set(race.get("track_condition", "Good"))
+                
+                # Set stat threshold
+                self.stat_threshold.delete(0, tk.END)
+                self.stat_threshold.insert(0, str(race.get("stat_threshold", 0)))
                 
                 # Load umas
                 self.umas = config.get("umas", [])

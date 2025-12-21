@@ -4,32 +4,856 @@ import random
 from datetime import datetime
 from pathlib import Path
 
+from race_engine import (
+    RaceEngine, RacePhase, RunningStyle, UmaStats, UmaState,
+    create_race_engine_from_config, PHASE_CONFIGS, STYLE_CONFIGS
+)
+
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QComboBox, QLabel, QFileDialog, QTextEdit, QSplitter,
     QFrame, QMessageBox
 )
-from PySide6.QtCore import Qt, QTimer, QSize, QPoint
-from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush
+from PySide6.QtCore import Qt, QTimer, QSize, QPoint, QPointF
+from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush, QPainterPath
+
+
+# ============================================================================
+# RACECOURSE TRACK LAYOUTS
+# Each layout defines the track shape using normalized control points
+# Direction: "Right" = clockwise, "Left" = counter-clockwise  
+# All tracks are ovals, but differ in aspect ratio and corner tightness
+# Based on GameTora data: All JRA tracks have 4 corners, differ in straight length
+# ============================================================================
+
+# G1 RACE COURSE CONFIGURATIONS (from GameTora)
+# Format: "racecourse_distance_surface_variant": { corners, straights, etc }
+# Positions are in meters, will be normalized to progress (0-1)
+G1_COURSE_DATA = {
+    # Arima Kinen - Nakayama 2500m Turf Inner (Right-handed)
+    "Nakayama_2500_Turf_Inner": {
+        "corners": [
+            {"name": "C1", "start": 350, "end": 540},
+            {"name": "C2", "start": 540, "end": 730},
+            {"name": "C3", "start": 1580, "end": 1880},
+            {"name": "C4", "start": 1880, "end": 2180},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 350},      # Home straight (start)
+            {"name": "S2", "start": 730, "end": 1580},   # Backstretch
+            {"name": "S3", "start": 2180, "end": 2500},  # Home straight (finish)
+        ],
+        "spurt_start": 1667,
+    },
+    # Japan Cup - Tokyo 2400m Turf (Left-handed)
+    "Tokyo_2400_Turf": {
+        "corners": [
+            {"name": "C1", "start": 350, "end": 550},
+            {"name": "C2", "start": 550, "end": 750},
+            {"name": "C3", "start": 1300, "end": 1650},
+            {"name": "C4", "start": 1650, "end": 2000},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 350},
+            {"name": "S2", "start": 750, "end": 1300},
+            {"name": "S3", "start": 2000, "end": 2400},  # Famous long home straight
+        ],
+        "spurt_start": 1600,
+    },
+    # Tokyo Yushun (Derby) - Tokyo 2400m Turf (same as Japan Cup)
+    "Tokyo_2400_Turf_Derby": {
+        "corners": [
+            {"name": "C1", "start": 350, "end": 550},
+            {"name": "C2", "start": 550, "end": 750},
+            {"name": "C3", "start": 1300, "end": 1650},
+            {"name": "C4", "start": 1650, "end": 2000},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 350},
+            {"name": "S2", "start": 750, "end": 1300},
+            {"name": "S3", "start": 2000, "end": 2400},
+        ],
+        "spurt_start": 1600,
+    },
+    # Tenno Sho Spring - Kyoto 3200m Turf Outer (Right-handed)
+    "Kyoto_3200_Turf_Outer": {
+        "corners": [
+            {"name": "C3", "start": 370, "end": 720},
+            {"name": "C4", "start": 720, "end": 1070},
+            {"name": "C1", "start": 1520, "end": 1710},
+            {"name": "C2", "start": 1710, "end": 1900},
+            {"name": "C3b", "start": 2250, "end": 2550},
+            {"name": "C4b", "start": 2550, "end": 2850},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 370},
+            {"name": "S2", "start": 1070, "end": 1520},
+            {"name": "S3", "start": 1900, "end": 2250},
+            {"name": "S4", "start": 2850, "end": 3200},
+        ],
+        "spurt_start": 2133,
+    },
+    # Tenno Sho Autumn - Tokyo 2000m Turf (Left-handed)
+    "Tokyo_2000_Turf": {
+        "corners": [
+            {"name": "C1", "start": 150, "end": 350},
+            {"name": "C2", "start": 350, "end": 550},
+            {"name": "C3", "start": 1100, "end": 1400},
+            {"name": "C4", "start": 1400, "end": 1700},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 150},
+            {"name": "S2", "start": 550, "end": 1100},
+            {"name": "S3", "start": 1700, "end": 2000},
+        ],
+        "spurt_start": 1333,
+    },
+    # Takarazuka Kinen - Hanshin 2200m Turf Inner (Right-handed)
+    "Hanshin_2200_Turf_Inner": {
+        "corners": [
+            {"name": "C1", "start": 520, "end": 710},
+            {"name": "C2", "start": 710, "end": 900},
+            {"name": "C3", "start": 1250, "end": 1550},
+            {"name": "C4", "start": 1550, "end": 1850},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 520},
+            {"name": "S2", "start": 900, "end": 1250},
+            {"name": "S3", "start": 1850, "end": 2200},
+        ],
+        "spurt_start": 1467,
+    },
+    # Osaka Hai - Hanshin 2000m Turf Inner (Right-handed)
+    "Hanshin_2000_Turf_Inner": {
+        "corners": [
+            {"name": "C1", "start": 370, "end": 560},
+            {"name": "C2", "start": 560, "end": 750},
+            {"name": "C3", "start": 1050, "end": 1350},
+            {"name": "C4", "start": 1350, "end": 1650},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 370},
+            {"name": "S2", "start": 750, "end": 1050},
+            {"name": "S3", "start": 1650, "end": 2000},
+        ],
+        "spurt_start": 1333,
+    },
+    # Oka Sho - Hanshin 1600m Turf Outer (Right-handed)
+    "Hanshin_1600_Turf_Outer": {
+        "corners": [
+            {"name": "C3", "start": 450, "end": 800},
+            {"name": "C4", "start": 800, "end": 1150},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 450},
+            {"name": "S2", "start": 1150, "end": 1600},
+        ],
+        "spurt_start": 1067,
+    },
+    # Satsuki Sho - Nakayama 2000m Turf Inner (Right-handed)
+    "Nakayama_2000_Turf_Inner": {
+        "corners": [
+            {"name": "C1", "start": 130, "end": 320},
+            {"name": "C2", "start": 320, "end": 510},
+            {"name": "C3", "start": 1060, "end": 1360},
+            {"name": "C4", "start": 1360, "end": 1660},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 130},
+            {"name": "S2", "start": 510, "end": 1060},
+            {"name": "S3", "start": 1660, "end": 2000},
+        ],
+        "spurt_start": 1333,
+    },
+    # Kikuka Sho - Kyoto 3000m Turf Outer (Right-handed)
+    "Kyoto_3000_Turf_Outer": {
+        "corners": [
+            {"name": "C3", "start": 170, "end": 520},
+            {"name": "C4", "start": 520, "end": 870},
+            {"name": "C1", "start": 1320, "end": 1510},
+            {"name": "C2", "start": 1510, "end": 1700},
+            {"name": "C3b", "start": 2050, "end": 2350},
+            {"name": "C4b", "start": 2350, "end": 2650},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 170},
+            {"name": "S2", "start": 870, "end": 1320},
+            {"name": "S3", "start": 1700, "end": 2050},
+            {"name": "S4", "start": 2650, "end": 3000},
+        ],
+        "spurt_start": 2000,
+    },
+    # Shuka Sho - Kyoto 2000m Turf Inner (Right-handed)
+    "Kyoto_2000_Turf_Inner": {
+        "corners": [
+            {"name": "C3", "start": 350, "end": 550},
+            {"name": "C4", "start": 550, "end": 750},
+            {"name": "C1", "start": 1100, "end": 1350},
+            {"name": "C2", "start": 1350, "end": 1600},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 350},
+            {"name": "S2", "start": 750, "end": 1100},
+            {"name": "S3", "start": 1600, "end": 2000},
+        ],
+        "spurt_start": 1333,
+    },
+    # Queen Elizabeth II Cup - Kyoto 2200m Turf Outer (Right-handed)
+    "Kyoto_2200_Turf_Outer": {
+        "corners": [
+            {"name": "C3", "start": 350, "end": 600},
+            {"name": "C4", "start": 600, "end": 850},
+            {"name": "C1", "start": 1200, "end": 1450},
+            {"name": "C2", "start": 1450, "end": 1700},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 350},
+            {"name": "S2", "start": 850, "end": 1200},
+            {"name": "S3", "start": 1700, "end": 2200},
+        ],
+        "spurt_start": 1467,
+    },
+    # Mile Championship - Kyoto 1600m Turf Outer (Right-handed)
+    "Kyoto_1600_Turf_Outer": {
+        "corners": [
+            {"name": "C3", "start": 350, "end": 600},
+            {"name": "C4", "start": 600, "end": 850},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 350},
+            {"name": "S2", "start": 850, "end": 1600},
+        ],
+        "spurt_start": 1067,
+    },
+    # Sprinters Stakes - Nakayama 1200m Turf Outer (Right-handed)
+    "Nakayama_1200_Turf_Outer": {
+        "corners": [
+            {"name": "C3", "start": 300, "end": 550},
+            {"name": "C4", "start": 550, "end": 800},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 300},
+            {"name": "S2", "start": 800, "end": 1200},
+        ],
+        "spurt_start": 800,
+    },
+    # NHK Mile Cup / Yasuda Kinen / Victoria Mile - Tokyo 1600m Turf (Left-handed)
+    "Tokyo_1600_Turf": {
+        "corners": [
+            {"name": "C3", "start": 300, "end": 550},
+            {"name": "C4", "start": 550, "end": 800},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 300},
+            {"name": "S2", "start": 800, "end": 1600},  # Very long final straight
+        ],
+        "spurt_start": 1067,
+    },
+    # February Stakes - Tokyo 1600m Dirt (Left-handed)
+    "Tokyo_1600_Dirt": {
+        "corners": [
+            {"name": "C3", "start": 350, "end": 600},
+            {"name": "C4", "start": 600, "end": 850},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 350},
+            {"name": "S2", "start": 850, "end": 1600},
+        ],
+        "spurt_start": 1067,
+    },
+    # Takamatsunomiya Kinen - Chukyo 1200m Turf (Left-handed)
+    "Chukyo_1200_Turf": {
+        "corners": [
+            {"name": "C3", "start": 250, "end": 500},
+            {"name": "C4", "start": 500, "end": 750},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 250},
+            {"name": "S2", "start": 750, "end": 1200},
+        ],
+        "spurt_start": 800,
+    },
+    # Champions Cup - Chukyo 1800m Dirt (Left-handed)
+    "Chukyo_1800_Dirt": {
+        "corners": [
+            {"name": "C1", "start": 230, "end": 430},
+            {"name": "C2", "start": 430, "end": 630},
+            {"name": "C3", "start": 880, "end": 1130},
+            {"name": "C4", "start": 1130, "end": 1380},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 230},
+            {"name": "S2", "start": 630, "end": 880},
+            {"name": "S3", "start": 1380, "end": 1800},
+        ],
+        "spurt_start": 1200,
+    },
+    # Hopeful Stakes - Nakayama 2000m Turf Inner (same as Satsuki Sho)
+    "Nakayama_2000_Turf_Inner_Hopeful": {
+        "corners": [
+            {"name": "C1", "start": 130, "end": 320},
+            {"name": "C2", "start": 320, "end": 510},
+            {"name": "C3", "start": 1060, "end": 1360},
+            {"name": "C4", "start": 1360, "end": 1660},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 130},
+            {"name": "S2", "start": 510, "end": 1060},
+            {"name": "S3", "start": 1660, "end": 2000},
+        ],
+        "spurt_start": 1333,
+    },
+    # Hanshin JF / Asahi Hai Futurity - Hanshin 1600m Turf Outer
+    "Hanshin_1600_Turf_Outer_JF": {
+        "corners": [
+            {"name": "C3", "start": 450, "end": 800},
+            {"name": "C4", "start": 800, "end": 1150},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 450},
+            {"name": "S2", "start": 1150, "end": 1600},
+        ],
+        "spurt_start": 1067,
+    },
+    # Yushun Himba (Oaks) - Tokyo 2400m Turf (same as Japan Cup)
+    "Tokyo_2400_Turf_Oaks": {
+        "corners": [
+            {"name": "C1", "start": 350, "end": 550},
+            {"name": "C2", "start": 550, "end": 750},
+            {"name": "C3", "start": 1300, "end": 1650},
+            {"name": "C4", "start": 1650, "end": 2000},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 350},
+            {"name": "S2", "start": 750, "end": 1300},
+            {"name": "S3", "start": 2000, "end": 2400},
+        ],
+        "spurt_start": 1600,
+    },
+    # Tokyo Daishoten - Ohi 2000m Dirt (Right-handed)
+    "Ohi_2000_Dirt": {
+        "corners": [
+            {"name": "C1", "start": 300, "end": 500},
+            {"name": "C2", "start": 500, "end": 700},
+            {"name": "C3", "start": 1100, "end": 1350},
+            {"name": "C4", "start": 1350, "end": 1600},
+        ],
+        "straights": [
+            {"name": "S1", "start": 0, "end": 300},
+            {"name": "S2", "start": 700, "end": 1100},
+            {"name": "S3", "start": 1600, "end": 2000},
+        ],
+        "spurt_start": 1333,
+    },
+}
+
+# Map race configurations to course data keys
+RACE_TO_COURSE_KEY = {
+    "arima_kinen": "Nakayama_2500_Turf_Inner",
+    "japan_cup": "Tokyo_2400_Turf",
+    "tokyo_yushun": "Tokyo_2400_Turf_Derby",
+    "tenno_sho_spring": "Kyoto_3200_Turf_Outer",
+    "tenno_sho_autumn": "Tokyo_2000_Turf",
+    "takarazuka_kinen": "Hanshin_2200_Turf_Inner",
+    "osaka_hai": "Hanshin_2000_Turf_Inner",
+    "oka_sho": "Hanshin_1600_Turf_Outer",
+    "satsuki_sho": "Nakayama_2000_Turf_Inner",
+    "kikuka_sho": "Kyoto_3000_Turf_Outer",
+    "shuka_sho": "Kyoto_2000_Turf_Inner",
+    "queen_elizabeth_ii_cup": "Kyoto_2200_Turf_Outer",
+    "mile_championship": "Kyoto_1600_Turf_Outer",
+    "sprinters_stakes": "Nakayama_1200_Turf_Outer",
+    "nhk_mile_cup": "Tokyo_1600_Turf",
+    "yasuda_kinen": "Tokyo_1600_Turf",
+    "victoria_mile": "Tokyo_1600_Turf",
+    "yushun_himba": "Tokyo_2400_Turf_Oaks",
+    "february_stakes": "Tokyo_1600_Dirt",
+    "takamatsunomiya_kinen": "Chukyo_1200_Turf",
+    "champions_cup": "Chukyo_1800_Dirt",
+    "hopeful_stakes": "Nakayama_2000_Turf_Inner_Hopeful",
+    "hanshin_juvenile_fillies": "Hanshin_1600_Turf_Outer_JF",
+    "asahi_hai_futurity_stakes": "Hanshin_1600_Turf_Outer_JF",
+    "tokyo_daishoten": "Ohi_2000_Dirt",
+}
+
+RACECOURSE_LAYOUTS = {
+    # Tokyo - Left-handed, LARGE oval, very long home straight (525m), 2083m turf
+    # Famous for: Wide sweeping turns, long straights
+    "Tokyo": {
+        "direction": "Left",
+        "width_ratio": 2.2,      # Very elongated (long straights)
+        "corner_tightness": 0.9, # Gentle wide corners
+    },
+    
+    # Nakayama - Right-handed, 1840m outer, tight turn 4
+    # Famous for: Notoriously tight final turn, undulating terrain
+    # Corners are sharper compared to Tokyo
+    "Nakayama": {
+        "direction": "Right",
+        "width_ratio": 1.5,      # More compact than Tokyo
+        "corner_tightness": 0.7, # Tighter corners, especially turn 4
+    },
+    
+    # Hanshin - Right-handed, dual course (outer 2089m), relatively flat
+    # Famous for: A/B courses, renovated in 2006
+    "Hanshin": {
+        "direction": "Right",
+        "width_ratio": 1.8,
+        "corner_tightness": 0.85,
+    },
+    
+    # Kyoto - Right-handed, dual course (outer 1894m), famous hill on backstretch
+    # Famous for: 3-4 corner hill (淀の坂), downhill finish
+    "Kyoto": {
+        "direction": "Right",
+        "width_ratio": 1.7,
+        "corner_tightness": 0.8,
+    },
+    
+    # Chukyo - Left-handed, medium size (1705m), slightly undulating
+    "Chukyo": {
+        "direction": "Left",
+        "width_ratio": 1.5,
+        "corner_tightness": 0.75,
+    },
+    
+    # Sapporo - Right-handed, small (1641m), 洋芝 (Western grass)
+    # Corners 1-4 fairly evenly spaced
+    "Sapporo": {
+        "direction": "Right",
+        "width_ratio": 1.3,
+        "corner_tightness": 0.7,
+    },
+    
+    # Hakodate - Right-handed, smallest JRA track (1477m), very tight
+    "Hakodate": {
+        "direction": "Right",
+        "width_ratio": 1.2,
+        "corner_tightness": 0.6,   # Tightest corners
+    },
+    
+    # Fukushima - Right-handed, small (1600m), spiral course
+    "Fukushima": {
+        "direction": "Right",
+        "width_ratio": 1.35,
+        "corner_tightness": 0.65,
+    },
+    
+    # Niigata - Left-handed, HUGE (2223m), famous 1000m straight course
+    # Famous for: Longest straight course in Japan, very few corners
+    # GameTora shows only Corner 3 & 4 for most races - extremely long straights
+    "Niigata": {
+        "direction": "Left",
+        "width_ratio": 2.5,       # Extremely elongated
+        "corner_tightness": 0.95, # Very gentle corners
+    },
+    
+    # Kokura - Right-handed, small (1615m), flat, summer venue
+    "Kokura": {
+        "direction": "Right",
+        "width_ratio": 1.4,
+        "corner_tightness": 0.7,
+    },
+    
+    # Ohi - Right-handed, NAR dirt track (1400m), tight turns
+    "Ohi": {
+        "direction": "Right",
+        "width_ratio": 1.25,
+        "corner_tightness": 0.55,  # Very tight (dirt track)
+    },
+}
+
+# Default layout for unknown racecourses
+DEFAULT_LAYOUT = {
+    "direction": "Right",
+    "width_ratio": 1.6,
+    "corner_tightness": 0.75,
+}
 
 
 class RaceCanvasWidget(QWidget):
-    """Custom widget for rendering race track and umas"""
+    """Custom widget for rendering race track and umas with curved racecourse layouts"""
     
     def __init__(self):
         super().__init__()
         self.sim_data = None
         self.uma_distances = {}
-        self.track_margin = 80
+        self.track_margin = 5  # Minimal margin for maximum track size
         self.uma_finished = {}
         self.uma_dnf = {}
         self.uma_incidents = {}
         self.uma_colors = {}
         self.gate_numbers = {}
-        self.duel_participants = set()  # === BARU: Tambahkan duel participants ===
+        # Mechanic state indicators
+        self.duel_participants = set()      # Red - dueling
+        self.rushing_participants = set()   # Orange - rushing
+        self.spot_struggle_participants = set()  # Magenta - spot struggle
+        self.skill_active_participants = set()  # Cyan glow - skill active
+        
+        # Track layout data
+        self.racecourse = None
+        self.direction = "Right"
+        self.track_path = None
+        self.track_points = []  # List of (x, y, progress) points along the track
+        self.path_length = 0
+        
+    def set_racecourse(self, racecourse_name, direction=None):
+        """Set the racecourse layout to use"""
+        self.racecourse = racecourse_name
+        if direction:
+            self.direction = direction
+        elif racecourse_name in RACECOURSE_LAYOUTS:
+            self.direction = RACECOURSE_LAYOUTS[racecourse_name]["direction"]
+        self.track_path = None  # Force regeneration
+        self.track_points = []
+        
+    def generate_track_path(self, width, height):
+        """Generate the track path based on racecourse layout"""
+        layout = RACECOURSE_LAYOUTS.get(self.racecourse, DEFAULT_LAYOUT)
+        
+        # Track dimensions with minimal padding
+        padding = self.track_margin
+        track_width = width - 2 * padding
+        track_height = height - 2 * padding
+        
+        # Center of the track area
+        cx = width / 2
+        cy = height / 2
+        
+        # Get layout parameters
+        width_ratio = layout.get("width_ratio", 1.6)
+        corner_tightness = layout.get("corner_tightness", 0.75)
+        direction = layout.get("direction", "Right")
+        
+        # Calculate the maximum track size that fits while maintaining aspect ratio
+        # The track's width/height ratio must match width_ratio
+        canvas_ratio = track_width / track_height
+        
+        if canvas_ratio > width_ratio:
+            # Canvas is wider than track aspect ratio - height is the constraint
+            # Use full height, calculate width
+            oval_height = track_height
+            oval_width = oval_height * width_ratio
+        else:
+            # Canvas is taller than track aspect ratio - width is the constraint
+            # Use full width, calculate height
+            oval_width = track_width
+            oval_height = oval_width / width_ratio
+        
+        # Debug output
+        print(f"Canvas: {width}x{height}, Track area: {track_width}x{track_height}")
+        print(f"width_ratio: {width_ratio}, canvas_ratio: {canvas_ratio:.2f}")
+        print(f"Final oval: {oval_width:.0f}x{oval_height:.0f}")
+        
+        # Direction multiplier: 1 for Right (clockwise), -1 for Left (counter-clockwise)
+        dir_mult = 1 if direction == "Right" else -1
+        
+        # Generate path points - use unified rounded rectangle approach
+        path = QPainterPath()
+        self.track_points = []
+        
+        num_points = 360  # One point per degree
+        
+        # Generate the track using a rounded rectangle (stadium) shape
+        # All JRA tracks are basically ovals - they differ in aspect ratio and corner radius
+        self._generate_rounded_track(cx, cy, oval_width, oval_height, corner_tightness, dir_mult, num_points)
+        
+        # Build the QPainterPath from track points
+        for i, (x, y, t) in enumerate(self.track_points):
+            if i == 0:
+                path.moveTo(x, y)
+            else:
+                path.lineTo(x, y)
+        
+        path.closeSubpath()
+        self.track_path = path
+        
+        # Calculate path length
+        self.path_length = sum(
+            math.sqrt((self.track_points[i][0] - self.track_points[i-1][0])**2 + 
+                     (self.track_points[i][1] - self.track_points[i-1][1])**2)
+            for i in range(1, len(self.track_points))
+        )
+        
+        return path
+    
+    def _generate_rounded_track(self, cx, cy, width, height, corner_tightness, dir_mult, num_points):
+        """Generate a rounded rectangle track (stadium shape)
+        
+        This creates a track with:
+        - Two straight sections (top and bottom)  
+        - Two curved ends (left and right semicircles)
+        
+        corner_tightness controls the corner radius relative to track height:
+        - 1.0 = semicircle radius equals half height (pure stadium)
+        - Lower values = smaller corner radius, more rectangular appearance
+        
+        The track starts at the finish line (top-center for Right-handed)
+        and goes clockwise (Right) or counter-clockwise (Left)
+        """
+        half_w = width / 2
+        half_h = height / 2
+        
+        # Corner radius is based on track height and tightness
+        # For a proper stadium, corners should be semicircles with radius = half_h
+        corner_radius = half_h * corner_tightness
+        
+        # Straight section length = total width minus the two corner diameters
+        straight_length = max(0, width - 2 * corner_radius)
+        
+        # Centers of the semicircular ends
+        left_center_x = cx - straight_length / 2
+        right_center_x = cx + straight_length / 2
+        
+        # IMPORTANT: The Y position of straights must match the corner radius!
+        # Otherwise there's a gap between straights and curves
+        top_y = cy - corner_radius
+        bottom_y = cy + corner_radius
+        
+        for i in range(num_points):
+            t = i / num_points  # Progress 0 to 1 around the track
+            
+            if dir_mult > 0:  # Right-handed (clockwise)
+                if t < 0.25:
+                    # TOP STRAIGHT: going right (toward turn 1-2)
+                    local_t = t / 0.25
+                    x = left_center_x + local_t * straight_length
+                    y = top_y
+                elif t < 0.5:
+                    # RIGHT CURVE (Turn 1-2): semicircle on right side
+                    local_t = (t - 0.25) / 0.25
+                    angle = -math.pi/2 + local_t * math.pi  # -90° to +90°
+                    x = right_center_x + corner_radius * math.cos(angle)
+                    y = cy + corner_radius * math.sin(angle)
+                elif t < 0.75:
+                    # BOTTOM STRAIGHT: going left (backstretch)
+                    local_t = (t - 0.5) / 0.25
+                    x = right_center_x - local_t * straight_length
+                    y = bottom_y
+                else:
+                    # LEFT CURVE (Turn 3-4): semicircle on left side
+                    local_t = (t - 0.75) / 0.25
+                    angle = math.pi/2 + local_t * math.pi  # +90° to +270°
+                    x = left_center_x + corner_radius * math.cos(angle)
+                    y = cy + corner_radius * math.sin(angle)
+            else:  # Left-handed (counter-clockwise)
+                if t < 0.25:
+                    # TOP STRAIGHT: going left (toward turn 1-2)
+                    local_t = t / 0.25
+                    x = right_center_x - local_t * straight_length
+                    y = top_y
+                elif t < 0.5:
+                    # LEFT CURVE (Turn 1-2): semicircle on left side
+                    local_t = (t - 0.25) / 0.25
+                    angle = -math.pi/2 - local_t * math.pi  # -90° to -270°
+                    x = left_center_x + corner_radius * math.cos(angle)
+                    y = cy + corner_radius * math.sin(angle)
+                elif t < 0.75:
+                    # BOTTOM STRAIGHT: going right (backstretch)
+                    local_t = (t - 0.5) / 0.25
+                    x = left_center_x + local_t * straight_length
+                    y = bottom_y
+                else:
+                    # RIGHT CURVE (Turn 3-4): semicircle on right side
+                    local_t = (t - 0.75) / 0.25
+                    angle = math.pi/2 - local_t * math.pi  # +90° to -90°
+                    x = right_center_x + corner_radius * math.cos(angle)
+                    y = cy + corner_radius * math.sin(angle)
+            
+            self.track_points.append((x, y, t))
+    
+    def get_position_on_track(self, progress):
+        """Get (x, y) position on track for a given progress (0 to 1)"""
+        if not self.track_points:
+            return (self.track_margin, self.height() / 2)
+        
+        # Clamp progress
+        progress = max(0, min(1, progress))
+        
+        # Find the two points to interpolate between
+        idx = int(progress * (len(self.track_points) - 1))
+        idx = min(idx, len(self.track_points) - 2)
+        
+        t = progress * (len(self.track_points) - 1) - idx
+        
+        p1 = self.track_points[idx]
+        p2 = self.track_points[idx + 1]
+        
+        x = p1[0] + (p2[0] - p1[0]) * t
+        y = p1[1] + (p2[1] - p1[1]) * t
+        
+        return (x, y)
+    
+    def get_track_direction_at(self, progress):
+        """Get the direction angle (in radians) at a given progress point"""
+        if not self.track_points or len(self.track_points) < 2:
+            return 0
+        
+        idx = int(progress * (len(self.track_points) - 1))
+        idx = min(idx, len(self.track_points) - 2)
+        
+        p1 = self.track_points[idx]
+        p2 = self.track_points[idx + 1]
+        
+        return math.atan2(p2[1] - p1[1], p2[0] - p1[0])
+    
+    def get_course_data(self):
+        """Get course segment data for current race"""
+        if not self.sim_data:
+            return None
+        
+        # Try race_id first
+        race_id = self.sim_data.get('race_id', '')
+        course_key = RACE_TO_COURSE_KEY.get(race_id)
+        
+        if course_key and course_key in G1_COURSE_DATA:
+            return G1_COURSE_DATA.get(course_key)
+        
+        # Fallback: try to construct course key from racecourse, distance, surface
+        racecourse = self.sim_data.get('racecourse', '')
+        race_distance = self.sim_data.get('race_distance', 0)
+        surface = self.sim_data.get('race_surface', 'Turf')
+        
+        if racecourse and race_distance:
+            # Try various key formats
+            possible_keys = [
+                f"{racecourse}_{race_distance}_{surface}",
+                f"{racecourse}_{race_distance}_{surface}_Inner",
+                f"{racecourse}_{race_distance}_{surface}_Outer",
+            ]
+            
+            for key in possible_keys:
+                if key in G1_COURSE_DATA:
+                    return G1_COURSE_DATA.get(key)
+        
+        return None
+    
+    def draw_corner_markers(self, painter, race_distance):
+        """Draw corner position markers on the track"""
+        course_data = self.get_course_data()
+        if not course_data or not self.track_points:
+            return
+        
+        w = self.width()
+        h = self.height()
+        cx, cy = w / 2, h / 2
+        
+        # Draw corners as colored arcs/zones on track outer edge
+        corners = course_data.get('corners', [])
+        for corner in corners:
+            start_progress = corner['start'] / race_distance
+            end_progress = corner['end'] / race_distance
+            
+            # Draw corner zone highlight
+            start_idx = int(start_progress * (len(self.track_points) - 1))
+            end_idx = int(end_progress * (len(self.track_points) - 1))
+            start_idx = max(0, min(start_idx, len(self.track_points) - 1))
+            end_idx = max(0, min(end_idx, len(self.track_points) - 1))
+            
+            # Create path for corner zone (line only, no fill)
+            corner_path = QPainterPath()
+            first_point = True
+            for i in range(start_idx, end_idx + 1):
+                x, y, _ = self.track_points[i]
+                # Scale slightly outward to show on track edge
+                ox = cx + (x - cx) * 1.05
+                oy = cy + (y - cy) * 1.05
+                if first_point:
+                    corner_path.moveTo(ox, oy)
+                    first_point = False
+                else:
+                    corner_path.lineTo(ox, oy)
+            
+            # Draw corner highlight (stroke only, no fill)
+            pen = QPen(QColor('#FF6B35'), 4)  # Orange for corners
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)  # No fill!
+            painter.drawPath(corner_path)
+            
+            # Draw corner label at midpoint
+            mid_progress = (start_progress + end_progress) / 2
+            mid_x, mid_y = self.get_position_on_track(mid_progress)
+            # Offset label toward inside
+            label_x = cx + (mid_x - cx) * 0.65
+            label_y = cy + (mid_y - cy) * 0.65
+            
+            font = QFont("Arial", 10)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.setPen(QPen(QColor('#FF6B35')))
+            painter.drawText(int(label_x - 8), int(label_y + 4), corner['name'])
+    
+    def draw_spurt_marker(self, painter, race_distance):
+        """Draw the spurt start marker"""
+        course_data = self.get_course_data()
+        if not course_data or not self.track_points:
+            return
+        
+        spurt_start = course_data.get('spurt_start')
+        if not spurt_start:
+            return
+        
+        spurt_progress = spurt_start / race_distance
+        spurt_x, spurt_y = self.get_position_on_track(spurt_progress)
+        track_angle = self.get_track_direction_at(spurt_progress)
+        
+        # Draw spurt marker (perpendicular line across track)
+        perp_angle = track_angle + math.pi / 2
+        line_length = 25
+        
+        pen = QPen(QColor('#00FFFF'), 3)  # Cyan for spurt
+        painter.setPen(pen)
+        painter.drawLine(
+            int(spurt_x - line_length * math.cos(perp_angle)),
+            int(spurt_y - line_length * math.sin(perp_angle)),
+            int(spurt_x + line_length * math.cos(perp_angle)),
+            int(spurt_y + line_length * math.sin(perp_angle))
+        )
+        
+        # Label
+        font = QFont("Arial", 8)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.setPen(QPen(QColor('#00FFFF')))
+        label_x = spurt_x + 30 * math.cos(perp_angle)
+        label_y = spurt_y + 30 * math.sin(perp_angle)
+        painter.drawText(int(label_x - 20), int(label_y + 4), "SPURT")
+    
+    def draw_distance_markers(self, painter, race_distance):
+        """Draw distance markers every 500m"""
+        if not self.track_points:
+            return
+        
+        # Draw markers every 500m
+        marker_interval = 500
+        for distance in range(marker_interval, int(race_distance), marker_interval):
+            progress = distance / race_distance
+            x, y = self.get_position_on_track(progress)
+            track_angle = self.get_track_direction_at(progress)
+            
+            # Draw small tick mark perpendicular to track
+            perp_angle = track_angle + math.pi / 2
+            tick_length = 10
+            
+            pen = QPen(QColor('#AAAAAA'), 2)
+            painter.setPen(pen)
+            painter.drawLine(
+                int(x - tick_length * math.cos(perp_angle)),
+                int(y - tick_length * math.sin(perp_angle)),
+                int(x + tick_length * math.cos(perp_angle)),
+                int(y + tick_length * math.sin(perp_angle))
+            )
+            
+            # Distance label (positioned inside track)
+            font = QFont("Arial", 7)
+            painter.setFont(font)
+            painter.setPen(QPen(QColor('#CCCCCC')))
+            label_x = x + 18 * math.cos(perp_angle)
+            label_y = y + 18 * math.sin(perp_angle)
+            painter.drawText(int(label_x - 12), int(label_y + 4), f"{distance}m")
     
     def paintEvent(self, event):
-        """Paint the race track"""
+        """Paint the race track with curved layout"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
@@ -38,106 +862,275 @@ class RaceCanvasWidget(QWidget):
         if w <= 1:
             w = 800
         if h <= 1:
-            h = 80
+            h = 300
         
-        track_y = h // 2
+        # Generate track path if needed
+        if self.track_path is None or not self.track_points:
+            self.generate_track_path(w, h)
         
-        # Draw track line
-        pen = QPen(QColor('#a0d8e0'), 4)
-        painter.setPen(pen)
-        painter.drawLine(self.track_margin, track_y, w - self.track_margin, track_y)
+        # Draw track background (grass/dirt area)
+        if self.sim_data:
+            surface = self.sim_data.get('surface', 'Turf')
+            if surface == 'Dirt':
+                bg_color = QColor('#8B7355')  # Brown for dirt
+            else:
+                bg_color = QColor('#2d5016')  # Dark green for turf
+        else:
+            bg_color = QColor('#2d5016')
         
-        # Draw START label
-        font = QFont("Arial", 12)
-        font.setBold(True)
-        painter.setFont(font)
-        painter.setPen(QPen(QColor('white')))
-        painter.drawText(self.track_margin - 60, track_y - 10, 60, 20, Qt.AlignmentFlag.AlignCenter, "START")
+        painter.fillRect(0, 0, w, h, bg_color)
         
-        # Draw FINISH label
-        painter.drawText(w - self.track_margin, track_y - 10, 60, 20, Qt.AlignmentFlag.AlignCenter, "FINISH")
+        # Draw track infield (lighter color)
+        if self.track_path:
+            infield_color = QColor('#1a3d0c') if self.sim_data and self.sim_data.get('surface') != 'Dirt' else QColor('#6B5344')
+            painter.setBrush(QBrush(infield_color))
+            painter.setPen(Qt.PenStyle.NoPen)
+            
+            # Scale down the path for infield
+            infield_path = QPainterPath()
+            cx, cy = w / 2, h / 2
+            scale = 0.7
+            
+            for i, (x, y, _) in enumerate(self.track_points):
+                # Scale towards center
+                ix = cx + (x - cx) * scale
+                iy = cy + (y - cy) * scale
+                if i == 0:
+                    infield_path.moveTo(ix, iy)
+                else:
+                    infield_path.lineTo(ix, iy)
+            infield_path.closeSubpath()
+            painter.drawPath(infield_path)
+        
+        # Draw outer track edge
+        if self.track_path:
+            outer_path = QPainterPath()
+            cx, cy = w / 2, h / 2
+            scale = 1.08
+            
+            for i, (x, y, _) in enumerate(self.track_points):
+                ox = cx + (x - cx) * scale
+                oy = cy + (y - cy) * scale
+                if i == 0:
+                    outer_path.moveTo(ox, oy)
+                else:
+                    outer_path.lineTo(ox, oy)
+            outer_path.closeSubpath()
+            
+            # Draw track surface between outer and inner
+            painter.setBrush(QBrush(QColor('#c4a87c') if self.sim_data and self.sim_data.get('surface') == 'Dirt' else QColor('#90b070')))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawPath(outer_path)
+            painter.drawPath(infield_path)
+        
+        # Draw the main track line (racing line)
+        if self.track_path:
+            # Track outline
+            pen = QPen(QColor('#ffffff'), 3)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawPath(self.track_path)
+            
+            # Inner rail
+            inner_path = QPainterPath()
+            cx, cy = w / 2, h / 2
+            for i, (x, y, _) in enumerate(self.track_points):
+                ix = cx + (x - cx) * 0.85
+                iy = cy + (y - cy) * 0.85
+                if i == 0:
+                    inner_path.moveTo(ix, iy)
+                else:
+                    inner_path.lineTo(ix, iy)
+            inner_path.closeSubpath()
+            
+            pen = QPen(QColor('#ffffff'), 2)
+            painter.setPen(pen)
+            painter.drawPath(inner_path)
+        
+        # Draw START and FINISH markers
+        if self.track_points:
+            # Start position (0% progress)
+            start_x, start_y = self.get_position_on_track(0.0)
+            # Finish position (100% progress / 0% on oval)
+            finish_x, finish_y = self.get_position_on_track(0.98)
+            
+            # Draw finish line
+            font = QFont("Arial", 10)
+            font.setBold(True)
+            painter.setFont(font)
+            
+            # Finish flag pattern
+            painter.setPen(QPen(QColor('#ffffff'), 2))
+            finish_angle = self.get_track_direction_at(0.98)
+            
+            # Draw checkered pattern at finish
+            for i in range(4):
+                offset = (i - 1.5) * 8
+                fx = finish_x + offset * math.cos(finish_angle + math.pi/2)
+                fy = finish_y + offset * math.sin(finish_angle + math.pi/2)
+                color = QColor('#ffffff') if i % 2 == 0 else QColor('#000000')
+                painter.setBrush(QBrush(color))
+                painter.drawRect(int(fx - 4), int(fy - 4), 8, 8)
+            
+            # Labels
+            painter.setPen(QPen(QColor('#ffff00')))
+            painter.drawText(int(start_x - 25), int(start_y - 25), "START")
+            painter.setPen(QPen(QColor('#ff0000')))
+            painter.drawText(int(finish_x - 25), int(finish_y + 20), "FINISH")
+        
+        # Draw racecourse name
+        if self.racecourse:
+            font = QFont("Arial", 14)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.setPen(QPen(QColor('#ffffff')))
+            direction_text = "↻" if self.direction == "Right" else "↺"
+            painter.drawText(10, 25, f"{self.racecourse} {direction_text}")
+        
+        # Draw course segment markers (corners, spurt, distance markers)
+        if self.sim_data and self.track_points:
+            race_distance = self.sim_data.get('race_distance', 2500)
+            self.draw_corner_markers(painter, race_distance)
+            self.draw_spurt_marker(painter, race_distance)
+            self.draw_distance_markers(painter, race_distance)
         
         # Draw umas if data available
-        if self.sim_data and self.uma_distances:
-            track_width = w - 2 * self.track_margin
+        if self.sim_data and self.uma_distances and self.track_points:
             race_distance = self.sim_data.get('race_distance', 2500)
+            num_umas = len(self.uma_distances)
             
-            # Sort umas by distance for position-based offset
+            # Ball size based on number of participants
+            if num_umas > 18:
+                ball_radius = 10
+            elif num_umas > 12:
+                ball_radius = 12
+            else:
+                ball_radius = 14
+            
+            # Sort umas by distance (leader first)
             sorted_umas = sorted(self.uma_distances.items(), key=lambda x: x[1], reverse=True)
             
-            # Group umas by proximity to avoid overlapping
-            uma_groups = []
-            current_group = []
-            last_x = -999
+            # Calculate positions with realistic lane blocking
+            assigned_positions = {}
+            
+            # Track width for lane spreading (inner to outer rail)
+            # Keep smaller to prevent going outside track
+            track_width = 28  # Reduced from 45 to keep within track
+            num_lanes = min(4, max(3, num_umas // 5))  # 3-4 virtual lanes
+            lane_width = track_width / num_lanes
+            
+            # Keep track of occupied positions to prevent overlap
+            # Key: (progress_bucket, lane), Value: uma_name
+            occupied_slots = {}
             
             for name, distance in sorted_umas:
                 if race_distance > 0:
                     progress = min(distance / race_distance, 1.0)
-                    x_pos = self.track_margin + progress * track_width
-                    
-                    # If uma is far from last one (>25px), start new group
-                    if abs(x_pos - last_x) > 25:
-                        if current_group:
-                            uma_groups.append(current_group)
-                        current_group = [(name, distance, x_pos)]
-                        last_x = x_pos
-                    else:
-                        current_group.append((name, distance, x_pos))
+                else:
+                    progress = 0
+                
+                base_x, base_y = self.get_position_on_track(progress)
+                track_angle = self.get_track_direction_at(progress)
+                perp_angle = track_angle + math.pi / 2
+                
+                # Progress bucket for collision detection (finer granularity)
+                # Each bucket represents ~1% of race distance
+                progress_bucket = int(progress * 100)
+                
+                # Find an available lane (prefer middle lanes, then spread out)
+                # Lane preference order: 2, 1, 3, 0, 4 (middle first)
+                lane_preference = [num_lanes // 2]
+                for i in range(1, (num_lanes + 1) // 2 + 1):
+                    if num_lanes // 2 + i < num_lanes:
+                        lane_preference.append(num_lanes // 2 + i)
+                    if num_lanes // 2 - i >= 0:
+                        lane_preference.append(num_lanes // 2 - i)
+                
+                assigned_lane = num_lanes // 2  # Default to middle
+                
+                # Check nearby buckets for collisions (current and adjacent)
+                for lane in lane_preference:
+                    is_free = True
+                    for bucket_offset in range(-2, 3):  # Check ±2 buckets
+                        check_bucket = progress_bucket + bucket_offset
+                        if (check_bucket, lane) in occupied_slots:
+                            is_free = False
+                            break
+                    if is_free:
+                        assigned_lane = lane
+                        break
+                
+                # Mark this slot as occupied
+                occupied_slots[(progress_bucket, assigned_lane)] = name
+                
+                # Calculate actual position based on lane
+                # Lane 0 = inner rail, Lane num_lanes-1 = outer rail
+                lane_offset = (assigned_lane - (num_lanes - 1) / 2) * lane_width
+                
+                lane_x = base_x + lane_offset * math.cos(perp_angle)
+                lane_y = base_y + lane_offset * math.sin(perp_angle)
+                
+                assigned_positions[name] = (lane_x, lane_y)
             
-            if current_group:
-                uma_groups.append(current_group)
-            
-            # Draw umas with vertical offset in groups
-            ball_radius = 10 if len(self.uma_distances) > 10 else 14
-            
-            for group in uma_groups:
-                group_size = len(group)
-                for idx, (name, distance, x_pos) in enumerate(group):
-                    # Calculate vertical offset based on position in group
-                    if group_size == 1:
-                        y_offset = 0
+            # Draw all Uma
+            for name, distance in sorted_umas:
+                x_pos, y_pos = assigned_positions.get(name, self.get_position_on_track(0))
+                
+                # Determine color based on status (priority order)
+                if self.uma_finished.get(name, False):
+                    color = QColor('#FFD700')  # Gold for finished
+                    outline = QColor('white')
+                elif self.uma_dnf.get(name, {}).get('dnf', False):
+                    color = QColor('#333333')  # Dark gray for DNF
+                    outline = QColor('white')
+                elif name in self.duel_participants:
+                    color = QColor('#FF0000')  # RED - Dueling (追い比べ)
+                    outline = QColor('#FFFFFF')
+                elif name in self.rushing_participants:
+                    color = QColor('#FF6600')  # ORANGE - Rushing (掛かり)
+                    outline = QColor('#FFFFFF')
+                elif name in self.spot_struggle_participants:
+                    color = QColor('#FF00FF')  # MAGENTA - Spot Struggle (位置取り争い)
+                    outline = QColor('#FFFFFF')
+                elif self.uma_incidents.get(name, {}).get('type'):
+                    color = QColor('#FFAA00')  # Light orange for incident
+                    outline = QColor('white')
+                else:
+                    color = QColor(self.uma_colors.get(name, '#fdbf24'))
+                    # Check for active skills - cyan outline if skill is active
+                    if name in self.skill_active_participants:
+                        outline = QColor('#00FFFF')  # Cyan outline for skill active
                     else:
-                        # Spread within ±15 pixels
-                        y_offset = (idx - (group_size - 1) / 2.0) * (30 / max(group_size, 2))
-                    
-                    y_pos = track_y + y_offset
-                    
-                    # Determine color based on status
-                    if self.uma_finished.get(name, False):
-                        color = QColor('#FFD700')  # Gold for finished
-                        outline = QColor('white')
-                    elif self.uma_dnf.get(name, {}).get('dnf', False):
-                        color = QColor('#333333')  # Gray for DNF
-                        outline = QColor('white')
-                    elif self.uma_incidents.get(name, {}).get('type'):
-                        color = QColor('#FF6600')  # Orange for incident
-                        outline = QColor('white')
-                    # === BARU: Warna khusus untuk peserta dueling ===
-                    elif name in self.duel_participants:
-                        color = QColor('#FF0000')  # Merah untuk dueling
-                        outline = QColor('white')
-                    else:
-                        color = QColor(self.uma_colors.get(name, '#fdbf24'))
                         outline = QColor('#c89600')
-                    
-                    # Draw uma circle
-                    painter.setBrush(QBrush(color))
-                    painter.setPen(QPen(outline, 2))
-                    painter.drawEllipse(int(x_pos - ball_radius), int(y_pos - ball_radius), 
-                                       ball_radius * 2, ball_radius * 2)
-                    
-                    # Draw participant number inside circle
-                    gate_num = self.gate_numbers.get(name, '?')
-                    font = QFont("Arial", 10)
-                    font.setBold(True)
-                    painter.setFont(font)
-                    painter.setPen(QPen(QColor('black')))
-                    painter.drawText(int(x_pos - ball_radius), int(y_pos - ball_radius), 
-                                    ball_radius * 2, ball_radius * 2, 
-                                    Qt.AlignmentFlag.AlignCenter, str(gate_num))
+                
+                # Draw uma circle
+                painter.setBrush(QBrush(color))
+                painter.setPen(QPen(outline, 2))
+                painter.drawEllipse(int(x_pos - ball_radius), int(y_pos - ball_radius), 
+                                   ball_radius * 2, ball_radius * 2)
+                
+                # Draw participant number inside circle
+                gate_num = self.gate_numbers.get(name, '?')
+                font = QFont("Arial", max(6, ball_radius - 2))
+                font.setBold(True)
+                painter.setFont(font)
+                painter.setPen(QPen(QColor('black')))
+                painter.drawText(int(x_pos - ball_radius), int(y_pos - ball_radius), 
+                                ball_radius * 2, ball_radius * 2, 
+                                Qt.AlignmentFlag.AlignCenter, str(gate_num))
     
+    def resizeEvent(self, event):
+        """Regenerate track path when widget is resized"""
+        super().resizeEvent(event)
+        # Force track path regeneration
+        self.track_path = None
+        self.track_points = []
+        self.update()
+        
     def update_display(self, sim_data, uma_distances, uma_finished, uma_dnf, 
-                      uma_incidents, uma_colors, gate_numbers, track_margin, duel_participants=None):
+                      uma_incidents, uma_colors, gate_numbers, track_margin, 
+                      duel_participants=None, rushing_participants=None, 
+                      spot_struggle_participants=None, skill_active_participants=None):
         """Update display data"""
         self.sim_data = sim_data
         self.uma_distances = uma_distances
@@ -147,9 +1140,16 @@ class RaceCanvasWidget(QWidget):
         self.uma_colors = uma_colors
         self.gate_numbers = gate_numbers
         self.track_margin = track_margin
-        # === BARU: Update duel participants ===
+        # Update mechanic indicators
         if duel_participants is not None:
             self.duel_participants = duel_participants
+        if rushing_participants is not None:
+            self.rushing_participants = rushing_participants
+        if spot_struggle_participants is not None:
+            self.spot_struggle_participants = spot_struggle_participants
+            self.duel_participants = duel_participants
+        if skill_active_participants is not None:
+            self.skill_active_participants = skill_active_participants
         self.update()
 
 
@@ -160,6 +1160,8 @@ class UmaRacingGUI(QMainWindow):
         # Initialize simulation variables
         self.sim_running = False
         self.sim_data = None
+        self.config_data = None  # Store original config for engine creation
+        self.race_engine: RaceEngine = None  # NEW: Core race simulation engine
         self.sim_time = 0.0
         self.fired_event_seconds = set()
         self.uma_icons = {}
@@ -174,7 +1176,7 @@ class UmaRacingGUI(QMainWindow):
         self.uma_colors = {}
         self.real_time_data = None
 
-        # Real-time simulation variables
+        # Real-time simulation variables (synced from engine)
         self.uma_distances = {}
         self.uma_finished = {}
         self.uma_incidents = {}
@@ -185,13 +1187,16 @@ class UmaRacingGUI(QMainWindow):
         self.uma_stamina = {}
         self.uma_dnf = {}
         
-        # === BARU: Variabel dueling ===
+        # Dueling variables (visual feature)
         self.duel_active = False
         self.duel_participants = set()
+        self.rushing_participants = set()
+        self.spot_struggle_participants = set()
+        self.skill_active_participants = set()  # Track Uma with active skills
         self.duel_start_time = 0
         self.duel_commentary_made = False
-        self.duel_guts_used = {}  # Track who used guts for dueling
-        self.duel_stamina_boost_used = {}  # Track stamina boosts
+        self.duel_guts_used = {}
+        self.duel_stamina_boost_used = {}
 
         # Commentary tracking
         self.distance_callouts_made = set()
@@ -302,16 +1307,17 @@ class UmaRacingGUI(QMainWindow):
         # Splitter for canvas and output
         splitter = QSplitter(Qt.Orientation.Vertical)
         
-        # Canvas frame
+        # Canvas frame - larger for curved track display
         self.canvas_frame = QFrame()
         self.canvas_frame.setStyleSheet("background-color: #3a665a;")
-        self.canvas_frame.setMinimumHeight(200)
+        self.canvas_frame.setMinimumHeight(450)  # Larger canvas for better track visibility
         canvas_layout = QVBoxLayout(self.canvas_frame)
         canvas_layout.setContentsMargins(0, 0, 0, 0)
         
         # Use a custom painter-based canvas
         self.race_canvas = RaceCanvasWidget()
         self.race_canvas.setStyleSheet("background-color: #3a665a;")
+        self.race_canvas.setMinimumHeight(440)  # Ensure canvas doesn't shrink
         canvas_layout.addWidget(self.race_canvas)
         
         splitter.addWidget(self.canvas_frame)
@@ -320,21 +1326,26 @@ class UmaRacingGUI(QMainWindow):
         self.output_text = QTextEdit()
         self.output_text.setReadOnly(True)
         self.output_text.setStyleSheet("background-color: #0a0a0a; color: #00ff00; font-family: Courier; font-size: 9pt;")
-        self.output_text.setMaximumHeight(200)
+        self.output_text.setMaximumHeight(150)  # Smaller output area
         splitter.addWidget(self.output_text)
         
-        splitter.setStretchFactor(0, 2)
+        splitter.setStretchFactor(0, 4)  # Canvas gets more space
         splitter.setStretchFactor(1, 1)
         
         main_layout.addWidget(splitter, 1)
         
     def draw_track(self):
         """Draw track on canvas"""
-        self.race_canvas.update_display(self.sim_data, self.uma_distances, self.track_margin)
+        self.race_canvas.update_display(
+            self.sim_data, self.uma_distances, 
+            self.uma_finished, self.uma_dnf,
+            self.uma_incidents, self.uma_colors,
+            {}, self.track_margin
+        )
     
     def run_simulation_frame(self):
         """Run one frame of simulation"""
-        if self.sim_running and self.sim_data:
+        if self.sim_running and self.race_engine:
             self._run_real_time_tick()
 
     def load_racing_config(self):
@@ -353,14 +1364,47 @@ class UmaRacingGUI(QMainWindow):
             with open(file_path, 'r', encoding='utf-8') as f:
                 config_data = json.load(f)
             
+            # Store original config for engine creation
+            self.config_data = config_data
+            
+            # Create the race engine
+            self.race_engine = create_race_engine_from_config(config_data)
+            
+            # Also prepare legacy sim_data for UI compatibility
             self.sim_data = self.prepare_real_time_simulation(config_data)
             
+            race_config = config_data.get('race', {})
             self.append_output(f"Loaded racing config: {file_path}\n")
-            self.append_output(f"Race: {config_data.get('race', {}).get('name', 'Unknown')}\n")
-            self.append_output(f"Race distance: {self.sim_data.get('race_distance', 0)}m\n")
-            self.append_output(f"Race type: {self.sim_data.get('race_type', 'Unknown')}\n")
+            self.append_output(f"Race: {race_config.get('name', 'Unknown')}\n")
+            
+            # Show Japanese name if available
+            if race_config.get('name_jp'):
+                self.append_output(f"  ({race_config.get('name_jp')})\n")
+            
+            self.append_output(f"Race distance: {self.race_engine.race_distance}m\n")
+            self.append_output(f"Race type: {self.race_engine.race_type}\n")
+            self.append_output(f"Terrain: {self.race_engine.terrain.value.capitalize()}\n")
+            
+            # Show racecourse and direction if available (G1 race)
+            if race_config.get('racecourse'):
+                direction = race_config.get('direction', '')
+                dir_text = f" ({direction}-handed)" if direction else ""
+                self.append_output(f"Racecourse: {race_config.get('racecourse')}{dir_text}\n")
+                # Set racecourse on the canvas for curved track rendering
+                self.race_canvas.set_racecourse(race_config.get('racecourse'), direction)
+            else:
+                # Default to Tokyo if no racecourse specified
+                self.race_canvas.set_racecourse("Tokyo", "Left")
+            
+            # Show season if available
+            if race_config.get('season'):
+                self.append_output(f"Season: {race_config.get('season')}\n")
+            
+            self.append_output(f"Track Condition: {self.race_engine.track_condition.value.capitalize()}\n")
+            if self.race_engine.stat_threshold > 0:
+                self.append_output(f"Stat Threshold: {self.race_engine.stat_threshold}\n")
             self.append_output(f"Umas: {len(config_data.get('umas', []))}\n")
-            self.append_output("REAL-TIME SIMULATION MODE READY\n")
+            self.append_output("REAL-TIME SIMULATION MODE READY (New Engine)\n")
             
             self.initialize_uma_icons()
             
@@ -526,16 +1570,20 @@ class UmaRacingGUI(QMainWindow):
             'race_distance': race_distance,
             'race_type': race_type,
             'race_surface': surface,
+            'race_id': race_info.get('id', ''),  # Add race_id for course segment lookup
+            'racecourse': race_info.get('racecourse', ''),
+            'direction': race_info.get('direction', ''),
             'uma_stats': uma_stats
         }
 
     def initialize_real_time_simulation(self):
-        """Initialize all real-time simulation variables"""
+        """Initialize all real-time simulation variables and reset the race engine."""
         if not self.sim_data:
             return
             
         uma_stats = self.sim_data.get('uma_stats', {})
         
+        # Initialize GUI tracking variables
         self.uma_distances = {name: 0.0 for name in uma_stats.keys()}
         self.uma_finished = {name: False for name in uma_stats.keys()}
         self.uma_incidents = {name: {'type': None, 'duration': 0, 'start_time': 0} for name in uma_stats.keys()}
@@ -546,13 +1594,19 @@ class UmaRacingGUI(QMainWindow):
         self.uma_stamina = {name: 100.0 for name in uma_stats.keys()}
         self.uma_dnf = {name: {'dnf': False, 'reason': '', 'dnf_time': 0, 'dnf_distance': 0} for name in uma_stats.keys()}
         
-        # === BARU: Inisialisasi variabel dueling ===
+        # Dueling variables (visual feature)
         self.duel_active = False
         self.duel_participants = set()
         self.duel_start_time = 0
         self.duel_commentary_made = False
         self.duel_guts_used = {name: False for name in uma_stats.keys()}
         self.duel_stamina_boost_used = {name: False for name in uma_stats.keys()}
+        
+        # Mechanic tracking for visual indicators
+        self.rushing_participants = set()
+        self.spot_struggle_participants = set()
+        self._rushing_announced = set()
+        self._spot_struggle_announced = set()
 
         self.sim_time = 0.0
         self.finish_times.clear()
@@ -688,19 +1742,24 @@ class UmaRacingGUI(QMainWindow):
         self.sim_running = True
         self.initialize_real_time_simulation()
         
+        # Reset the race engine
+        if self.race_engine:
+            self.race_engine.reset()
+        
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         
-        self.append_output("REAL-TIME SIMULATION started!\n")
+        self.append_output("REAL-TIME SIMULATION started! (New Engine)\n")
         
         self._run_real_time_tick()
         
     def _run_real_time_tick(self):
-        """Main simulation tick for real-time simulation"""
-        if not self.sim_running or not self.sim_data:
+        """Main simulation tick using the new RaceEngine"""
+        if not self.sim_running or not self.race_engine:
             return
             
         try:
+            # Get speed multiplier from UI
             speed_text = self.speed_cb.currentText()
             mult = 1.0
             if speed_text.endswith('x'):
@@ -709,39 +1768,66 @@ class UmaRacingGUI(QMainWindow):
                 except Exception:
                     mult = 1.0
                     
-            frame_dt = 0.05
-            self.sim_time += frame_dt * mult
+            frame_dt = 0.05 * mult
             
-            race_distance = self.sim_data.get('race_distance', 2500)
-            uma_stats = self.sim_data.get('uma_stats', {})
+            # ===== NEW ENGINE TICK =====
+            engine_states = self.race_engine.tick(frame_dt)
+            self.sim_time = self.race_engine.current_time
             
-            current_frame_positions = self.calculate_real_time_positions(frame_dt * mult)
+            # Sync engine state to GUI variables
+            self._sync_engine_state_to_gui(engine_states)
+            
+            race_distance = self.race_engine.race_distance
+            
+            # Build frame positions from engine state
+            current_frame_positions = [
+                (name, state.distance) 
+                for name, state in engine_states.items()
+            ]
+            current_frame_positions.sort(key=lambda x: x[1], reverse=True)
 
-            # Initialize remaining_distance
+            # Calculate remaining distance
             remaining_distance = race_distance
-            # === BARU: Logika untuk menggambar penanda jarak ===
             if current_frame_positions:
                 leader_dist = current_frame_positions[0][1]
                 remaining_distance = max(0, race_distance - leader_dist)
 
-                # Penanda yang ingin ditampilkan (dalam meter tersisa)
+                # Distance markers
                 markers_to_show = [1000, 800, 600, 400, 200]
                 for marker in markers_to_show:
                     if remaining_distance <= marker and marker not in self.distance_markers_drawn:
                         self.draw_distance_marker(marker, race_distance)
                         self.distance_markers_drawn[marker] = True
             
-            # === BARU: Check and trigger dueling mechanism ===
+            # Check and trigger dueling (visual feature)
             if not self.duel_active and 400 <= remaining_distance <= 1200:
-                self.check_and_trigger_dueling(uma_stats, current_frame_positions, race_distance)
+                self.check_and_trigger_dueling(
+                    self.sim_data.get('uma_stats', {}), 
+                    current_frame_positions, 
+                    race_distance
+                )
 
-            current_incidents = {name: self.uma_incidents[name]['type'] for name in uma_stats.keys() if self.uma_incidents[name]['type'] and not self.uma_finished[name] and not self.uma_dnf[name]['dnf']}
+            # Build incidents dict for commentary
+            current_incidents = {
+                name: self.uma_incidents[name]['type'] 
+                for name in self.uma_incidents.keys() 
+                if self.uma_incidents[name]['type'] 
+                and not self.uma_finished.get(name, False) 
+                and not self.uma_dnf.get(name, {}).get('dnf', False)
+            }
 
-            # Filter positions to only active (non-finished, non-DNF) umas
-            active_positions = [p for p in current_frame_positions if not self.uma_finished[p[0]] and not self.uma_dnf[p[0]]['dnf']]
+            # Filter active positions
+            active_positions = [
+                p for p in current_frame_positions 
+                if not self.uma_finished.get(p[0], False) 
+                and not self.uma_dnf.get(p[0], {}).get('dnf', False)
+            ]
 
+            # Commentary
             if self.sim_time - self.last_commentary_time > 1.8:
-                leader_dist = active_positions[0][1] if active_positions else current_frame_positions[0][1] if current_frame_positions else 0
+                leader_dist = active_positions[0][1] if active_positions else (
+                    current_frame_positions[0][1] if current_frame_positions else 0
+                )
                 remaining_distance = max(0, race_distance - leader_dist)
             commentaries = self.get_enhanced_commentary(
                     self.sim_time, active_positions, race_distance,
@@ -758,9 +1844,8 @@ class UmaRacingGUI(QMainWindow):
             
             self.update_display(current_frame_positions, race_distance)
             
-            all_finished = len(self.finish_times) + len([d for d in self.uma_dnf.values() if d['dnf']]) == len(self.uma_icons)
-            
-            if all_finished:
+            # Check if race is finished (via engine)
+            if self.race_engine.is_finished:
                 self.sim_running = False
                 self.start_btn.setEnabled(True)
                 self.stop_btn.setEnabled(False)
@@ -768,13 +1853,109 @@ class UmaRacingGUI(QMainWindow):
                 return
             
         except Exception as e:
+            import traceback
             self.append_output(f"Simulation error: {str(e)}\n")
+            self.append_output(f"Traceback: {traceback.format_exc()}\n")
             self.sim_running = False
             self.start_btn.setEnabled(True)
             self.stop_btn.setEnabled(False)
 
+    def _sync_engine_state_to_gui(self, engine_states: dict):
+        """Sync RaceEngine state to GUI variables for display and commentary."""
+        # Track mechanic states for indicators
+        new_duel_participants = set()
+        new_rushing_participants = set()
+        new_spot_struggle_participants = set()
+        new_skill_active_participants = set()
+        
+        for name, state in engine_states.items():
+            # Sync distance
+            self.uma_distances[name] = state.distance
+            
+            # Sync finished status
+            if state.is_finished and not self.uma_finished.get(name, False):
+                self.uma_finished[name] = True
+                self.finish_times[name] = state.finish_time
+            
+            # Sync DNF status
+            if state.is_dnf and not self.uma_dnf.get(name, {}).get('dnf', False):
+                self.uma_dnf[name] = {
+                    'dnf': True,
+                    'reason': state.dnf_reason,
+                    'dnf_time': self.sim_time,
+                    'dnf_distance': state.distance
+                }
+                self.append_output(f"[{self.sim_time:.1f}s] {name} DNF! Reason: {state.dnf_reason}\n")
+            
+            # Sync stamina and fatigue
+            self.uma_stamina[name] = state.stamina
+            self.uma_fatigue[name] = state.fatigue
+            
+            # Track position changes for overtake detection
+            new_position = state.position
+            if name in self.previous_positions:
+                old_position = self.previous_positions[name]
+                if old_position > new_position:  # Overtake happened
+                    self.overtakes.add((name, old_position, new_position, self.sim_time))
+            self.previous_positions[name] = new_position
+            
+            # Track mechanic states for visual indicators
+            if state.is_in_duel:
+                new_duel_participants.add(name)
+            if state.is_rushing:
+                new_rushing_participants.add(name)
+            if state.is_in_spot_struggle:
+                new_spot_struggle_participants.add(name)
+            
+            # Track if Uma has active skills
+            if hasattr(state, 'active_skills') and state.active_skills:
+                new_skill_active_participants.add(name)
+            
+            # Skills: Check for newly activated skills
+            if hasattr(state, 'skills_activated_log') and state.skills_activated_log:
+                gate = self.gate_numbers.get(name, '?')
+                for skill_name in state.skills_activated_log:
+                    self.append_output(f"[{self.sim_time:.1f}s] ✨ [{gate}]{name} activated {skill_name}!\n")
+                # Clear the log after processing
+                state.skills_activated_log.clear()
+        
+        # Commentary for mechanic changes
+        # Dueling commentary
+        new_duelers = new_duel_participants - self.duel_participants
+        for name in new_duelers:
+            partner = engine_states[name].duel_partner if name in engine_states else ""
+            if partner:
+                gate1 = self.gate_numbers.get(name, '?')
+                gate2 = self.gate_numbers.get(partner, '?')
+                self.append_output(f"[{self.sim_time:.1f}s] 🔥 DUEL! [{gate1}]{name} vs [{gate2}]{partner} in an intense battle!\n")
+        
+        # Rushing commentary (only first time)
+        if not hasattr(self, '_rushing_announced'):
+            self._rushing_announced = set()
+        new_rushers = new_rushing_participants - self._rushing_announced
+        for name in new_rushers:
+            self._rushing_announced.add(name)
+            gate = self.gate_numbers.get(name, '?')
+            self.append_output(f"[{self.sim_time:.1f}s] ⚡ [{gate}]{name} is RUSHING! Burning extra stamina!\n")
+        
+        # Spot struggle commentary (only first time)
+        if not hasattr(self, '_spot_struggle_announced'):
+            self._spot_struggle_announced = set()
+        new_strugglers = new_spot_struggle_participants - self._spot_struggle_announced
+        for name in new_strugglers:
+            self._spot_struggle_announced.add(name)
+            gate = self.gate_numbers.get(name, '?')
+            self.append_output(f"[{self.sim_time:.1f}s] 💥 [{gate}]{name} enters SPOT STRUGGLE!\n")
+        
+        # Update indicator sets
+        self.duel_participants = new_duel_participants
+        self.rushing_participants = new_rushing_participants
+        self.spot_struggle_participants = new_spot_struggle_participants
+        self.skill_active_participants = new_skill_active_participants
+
     def calculate_real_time_positions(self, time_delta):
-        """Calculate new positions with distance-specific mechanics"""
+        """Legacy method - kept for compatibility but engine handles this now."""
+        # This method is now mostly unused, but kept for any legacy code paths
         race_distance = self.sim_data.get('race_distance', 2500)
         race_type = self.sim_data.get('race_type', 'Medium')
         uma_stats = self.sim_data.get('uma_stats', {})
@@ -1418,7 +2599,10 @@ class UmaRacingGUI(QMainWindow):
             self.uma_colors,
             self.gate_numbers,
             self.track_margin,
-            self.duel_participants  # === BARU: Kirim duel participants ke canvas ===
+            duel_participants=getattr(self, 'duel_participants', set()),
+            rushing_participants=getattr(self, 'rushing_participants', set()),
+            spot_struggle_participants=getattr(self, 'spot_struggle_participants', set()),
+            skill_active_participants=getattr(self, 'skill_active_participants', set())
         )
         
         # Update status labels
@@ -1427,11 +2611,15 @@ class UmaRacingGUI(QMainWindow):
             remaining = max(0, race_distance - leader_dist)
             
             leader_name = frame_positions[0][0]
-            uma_stat = self.sim_data['uma_stats'][leader_name]
-            current_speed = self.calculate_current_speed(leader_name, uma_stat, race_distance, self.sim_data['race_type'])
+            # Get speed from engine state if available
+            if self.race_engine and leader_name in self.race_engine.uma_states:
+                current_speed = self.race_engine.uma_states[leader_name].current_speed
+            else:
+                uma_stat = self.sim_data['uma_stats'][leader_name]
+                current_speed = self.calculate_current_speed(leader_name, uma_stat, race_distance, self.sim_data['race_type'])
             speed_kmh = current_speed * 3.6
             
-            # === BARU: Tampilkan status dueling ===
+            # Display status including dueling and final spurt
             status_text = f"Remaining: {remaining:.0f}m | Lead: {speed_kmh:.1f} km/h"
             if self.duel_active:
                 status_text += " | DUEL ACTIVE!"
@@ -1447,6 +2635,10 @@ class UmaRacingGUI(QMainWindow):
     def reset_simulation(self):
         """Reset the simulation"""
         self.stop_simulation()
+        
+        # Reset race engine
+        if self.race_engine:
+            self.race_engine.reset()
         
         self.sim_time = 0.0
         self.finish_times.clear()
@@ -1465,7 +2657,7 @@ class UmaRacingGUI(QMainWindow):
         self.uma_stamina.clear()
         self.uma_dnf.clear()
         
-        # === BARU: Reset variabel dueling ===
+        # Reset dueling variables
         self.duel_active = False
         self.duel_participants.clear()
         self.duel_start_time = 0
@@ -1501,13 +2693,23 @@ class UmaRacingGUI(QMainWindow):
         self.append_output("FINAL RACE RESULTS\n")
         self.append_output("="*50 + "\n")
         
-        finished_umas = sorted(self.finish_times.items(), key=lambda x: x[1])
+        # Use engine's get_final_results if available
+        if self.race_engine:
+            results = self.race_engine.get_final_results()
+            for pos, name, time_or_dist, status in results:
+                gate_num = self.gate_numbers.get(name, "?")
+                if status == "FIN":
+                    self.append_output(f"{pos}. [{gate_num}] {name} - {time_or_dist:.2f}s\n")
+                else:
+                    self.append_output(f"{pos}. [{gate_num}] {name} - {status} at {time_or_dist:.0f}m\n")
+        else:
+            # Legacy fallback
+            finished_umas = sorted(self.finish_times.items(), key=lambda x: x[1])
+            for i, (name, time) in enumerate(finished_umas):
+                gate_num = self.gate_numbers.get(name, "?")
+                self.append_output(f"{i+1}. [{gate_num}] {name} - {time:.2f}s\n")
         
-        for i, (name, time) in enumerate(finished_umas):
-            gate_num = self.gate_numbers.get(name, "?")
-            self.append_output(f"{i+1}. [{gate_num}] {name} - {time:.2f}s\n")
-        
-        dnf_umas = [(name, dnf_data) for name, dnf_data in self.uma_dnf.items() if dnf_data['dnf']]
+        dnf_umas = [(name, dnf_data) for name, dnf_data in self.uma_dnf.items() if dnf_data.get('dnf', False)]
         if dnf_umas:
             self.append_output("\nDNF (Did Not Finish):\n")
             for name, dnf_data in dnf_umas:
@@ -1515,10 +2717,11 @@ class UmaRacingGUI(QMainWindow):
                 self.append_output(f"- [{gate_num}] {name} (DNF at {dnf_data['dnf_distance']:.0f}m - {dnf_data['reason']})\n")
         
         total_starters = len(self.uma_icons)
-        total_finished = len(finished_umas)
+        total_finished = len(self.finish_times)
         total_dnf = len(dnf_umas)
         
-        if finished_umas:
+        if self.finish_times:
+            finished_umas = sorted(self.finish_times.items(), key=lambda x: x[1])
             winning_time = finished_umas[0][1]
             if len(finished_umas) > 1:
                 time_gap = finished_umas[-1][1] - winning_time
@@ -1529,9 +2732,9 @@ class UmaRacingGUI(QMainWindow):
             time_gap = 0.0
         
         self.append_output(f"\nSUMMARY: {total_finished}/{total_starters} finished, {total_dnf} DNF\n")
-        if finished_umas:
+        if self.finish_times:
             self.append_output(f"Winning time: {winning_time:.2f}s\n")
-            self.append_output(f"Time gap: {time_gap:.2f}s\n")
+            self.append_output(f"Time gap (1st to last): {time_gap:.2f}s\n")
         self.append_output("="*50 + "\n")
 
     def show_stat_priorities(self):
