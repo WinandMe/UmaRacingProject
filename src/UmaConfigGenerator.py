@@ -156,6 +156,24 @@ class UmaConfigGenerator:
         self.uma_running_style.grid(row=0, column=3, sticky=tk.W, padx=(5, 0))
         self.uma_running_style.set("PC - Pace Chaser")
         
+        # Gate number and mood (new mechanics)
+        gate_mood_frame = ttk.Frame(uma_frame)
+        gate_mood_frame.grid(row=0, column=4, columnspan=2, sticky=tk.W, padx=(10, 0))
+        
+        ttk.Label(gate_mood_frame, text="Gate:").grid(row=0, column=0, sticky=tk.W)
+        self.uma_gate = ttk.Combobox(gate_mood_frame, 
+                                     values=[str(i) for i in range(1, 19)], 
+                                     width=3)
+        self.uma_gate.grid(row=0, column=1, sticky=tk.W, padx=(5, 0))
+        self.uma_gate.set("1")
+        
+        ttk.Label(gate_mood_frame, text="Mood:").grid(row=0, column=2, sticky=tk.W, padx=(10, 0))
+        self.uma_mood = ttk.Combobox(gate_mood_frame, 
+                                     values=["Awful", "Bad", "Normal", "Good", "Great"], 
+                                     width=8)
+        self.uma_mood.grid(row=0, column=3, sticky=tk.W, padx=(5, 0))
+        self.uma_mood.set("Normal")
+        
         # Stats
         stats_frame = ttk.Frame(uma_frame)
         stats_frame.grid(row=1, column=0, columnspan=4, sticky=(tk.W, tk.E), pady=(10, 0))
@@ -491,6 +509,8 @@ class UmaConfigGenerator:
             {
                 "name": "King Argentine",
                 "running_style": "FR",
+                "gate_number": 1,
+                "mood": "Good",
                 "stats": {"Speed": 3500, "Stamina": 3500, "Power": 3500, "Guts": 3500, "Wit": 3500},
                 "distance_aptitude": {"Sprint": "A", "Mile": "A", "Medium": "A", "Long": "A"},
                 "surface_aptitude": {"Dirt": "A", "Turf": "A"},
@@ -499,6 +519,8 @@ class UmaConfigGenerator:
             {
                 "name": "Prince Loupan",
                 "running_style": "PC",
+                "gate_number": 2,
+                "mood": "Normal",
                 "stats": {"Speed": 3500, "Stamina": 3500, "Power": 3500, "Guts": 3500, "Wit": 3500},
                 "distance_aptitude": {"Sprint": "A", "Mile": "A", "Medium": "A", "Long": "A"},
                 "surface_aptitude": {"Dirt": "A", "Turf": "A"},
@@ -508,13 +530,21 @@ class UmaConfigGenerator:
 
         for uma in sample_umas:
             self.umas.append(uma)
-            self.uma_listbox.insert(tk.END, uma["name"])
+            gate = uma.get('gate_number', len(self.umas))
+            self.uma_listbox.insert(tk.END, f"#{gate} {uma['name']}")
     
     def add_uma(self):
         """Add a new empty uma"""
+        # Assign gate number based on number of existing umas
+        gate_num = len(self.umas) + 1
+        if gate_num > 18:
+            gate_num = 18  # Max 18 gates
+        
         new_uma = {
             "name": "New Uma",
             "running_style": "PC",
+            "gate_number": gate_num,
+            "mood": "Normal",
             "stats": {"Speed": 600, "Stamina": 600, "Power": 600, "Guts": 600, "Wit": 600},
             "distance_aptitude": {"Sprint": "B", "Mile": "B", "Medium": "B", "Long": "B"},
             "surface_aptitude": {"Dirt": "B", "Turf": "B"},
@@ -522,7 +552,7 @@ class UmaConfigGenerator:
         }
 
         self.umas.append(new_uma)
-        self.uma_listbox.insert(tk.END, new_uma["name"])
+        self.uma_listbox.insert(tk.END, f"#{gate_num} {new_uma['name']}")
         self.uma_listbox.selection_clear(0, tk.END)
         self.uma_listbox.selection_set(tk.END)
         self.on_uma_select()
@@ -549,12 +579,17 @@ class UmaConfigGenerator:
 
             # Set running style
             style_display = {
+                "RW": "RW - Runaway",
                 "FR": "FR - Front Runner",
                 "PC": "PC - Pace Chaser",
                 "LS": "LS - Late Surger",
                 "EC": "EC - End Closer"
             }
             self.uma_running_style.set(style_display.get(uma["running_style"], "PC - Pace Chaser"))
+
+            # Set gate number and mood
+            self.uma_gate.set(str(uma.get("gate_number", 1)))
+            self.uma_mood.set(uma.get("mood", "Normal"))
 
             # Set stats
             stats = uma["stats"]
@@ -597,6 +632,10 @@ class UmaConfigGenerator:
         style_code = self.uma_running_style.get().split(" - ")[0]
         uma["running_style"] = style_code
         
+        # Update gate number and mood
+        uma["gate_number"] = int(self.uma_gate.get())
+        uma["mood"] = self.uma_mood.get()
+        
         # Update stats
         uma["stats"] = {
             "Speed": int(self.uma_speed.get()),
@@ -624,7 +663,8 @@ class UmaConfigGenerator:
         
         # Update listbox
         self.uma_listbox.delete(self.current_uma_index)
-        self.uma_listbox.insert(self.current_uma_index, uma["name"])
+        gate = uma.get('gate_number', self.current_uma_index + 1)
+        self.uma_listbox.insert(self.current_uma_index, f"#{gate} {uma['name']}")
         self.uma_listbox.selection_set(self.current_uma_index)
         
         messagebox.showinfo("Success", "Uma saved successfully")
@@ -634,6 +674,8 @@ class UmaConfigGenerator:
         self.current_uma_index = None
         self.uma_name.delete(0, tk.END)
         self.uma_running_style.set("PC - Pace Chaser")
+        self.uma_gate.set("1")
+        self.uma_mood.set("Normal")
         self.uma_speed.set(600)
         self.uma_stamina.set(600)
         self.uma_power.set(600)
@@ -790,8 +832,9 @@ class UmaConfigGenerator:
                 # Load umas
                 self.umas = config.get("umas", [])
                 self.uma_listbox.delete(0, tk.END)
-                for uma in self.umas:
-                    self.uma_listbox.insert(tk.END, uma["name"])
+                for i, uma in enumerate(self.umas):
+                    gate = uma.get('gate_number', i + 1)
+                    self.uma_listbox.insert(tk.END, f"#{gate} {uma['name']}")
                 
                 # Update output
                 self.output_text.delete(1.0, tk.END)

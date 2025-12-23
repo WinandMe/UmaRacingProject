@@ -9,6 +9,99 @@ from race_engine import (
     create_race_engine_from_config, PHASE_CONFIGS, STYLE_CONFIGS
 )
 
+
+# =============================================================================
+# HORSE RACING MARGIN CONVERSION
+# =============================================================================
+# In horse racing, gaps between horses are measured in traditional units:
+# - Nose: ~0.05 lengths (very close photo finish)
+# - Short Head: ~0.1 lengths
+# - Head: ~0.2 lengths  
+# - Neck: ~0.3 lengths
+# - Half a length: 0.5 lengths
+# - 3/4 length: 0.75 lengths
+# - 1 length, 1.5 lengths, 2 lengths, etc.
+# - Distance: 20+ lengths (very far behind)
+#
+# One horse "length" ≈ 2.4 meters (average horse body length)
+# At racing speeds (~17 m/s), 1 length ≈ 0.14 seconds
+# =============================================================================
+
+HORSE_LENGTH_METERS = 2.4  # Average horse body length in meters
+
+def time_gap_to_margin(time_gap: float, avg_speed: float = 17.0) -> str:
+    """
+    Convert a time gap between horses to traditional racing margin notation.
+    
+    Args:
+        time_gap: Time difference in seconds
+        avg_speed: Average race speed in m/s (default ~17 m/s for turf)
+    
+    Returns:
+        Human-readable margin string (e.g., "1 1/4", "Neck", "Nose")
+    """
+    if time_gap <= 0:
+        return "-"  # Winner or same time
+    
+    # Convert time to distance, then to lengths
+    distance_meters = time_gap * avg_speed
+    lengths = distance_meters / HORSE_LENGTH_METERS
+    
+    # Traditional margin notation
+    if lengths < 0.05:
+        return "Dead Heat"
+    elif lengths < 0.1:
+        return "Nose"
+    elif lengths < 0.15:
+        return "Short Head"
+    elif lengths < 0.25:
+        return "Head"
+    elif lengths < 0.4:
+        return "Neck"
+    elif lengths < 0.6:
+        return "1/2"
+    elif lengths < 0.85:
+        return "3/4"
+    elif lengths < 1.15:
+        return "1"
+    elif lengths < 1.4:
+        return "1 1/4"
+    elif lengths < 1.6:
+        return "1 1/2"
+    elif lengths < 1.85:
+        return "1 3/4"
+    elif lengths < 2.15:
+        return "2"
+    elif lengths < 2.6:
+        return "2 1/2"
+    elif lengths < 3.15:
+        return "3"
+    elif lengths < 3.6:
+        return "3 1/2"
+    elif lengths < 4.15:
+        return "4"
+    elif lengths < 4.6:
+        return "4 1/2"
+    elif lengths < 5.15:
+        return "5"
+    elif lengths < 6.0:
+        return "5+"
+    elif lengths < 7.0:
+        return "6"
+    elif lengths < 8.0:
+        return "7"
+    elif lengths < 9.0:
+        return "8"
+    elif lengths < 10.0:
+        return "9"
+    elif lengths < 15.0:
+        return f"{int(lengths)}"
+    elif lengths < 20.0:
+        return "Large"  # ~15-20 lengths, large gap
+    else:
+        return "Distance"  # 20+ lengths, essentially out of contention
+
+
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QComboBox, QLabel, QFileDialog, QTextEdit, QSplitter,
@@ -487,6 +580,7 @@ class RaceCanvasWidget(QWidget):
         # Mechanic state indicators
         self.duel_participants = set()      # Red - dueling
         self.rushing_participants = set()   # Orange - rushing
+        self.temptation_participants = set()  # Yellow-Orange - temptation (かかり)
         self.spot_struggle_participants = set()  # Magenta - spot struggle
         self.skill_active_participants = set()  # Cyan glow - skill active
         
@@ -1086,6 +1180,9 @@ class RaceCanvasWidget(QWidget):
                 elif name in self.duel_participants:
                     color = QColor('#FF0000')  # RED - Dueling (追い比べ)
                     outline = QColor('#FFFFFF')
+                elif name in self.temptation_participants:
+                    color = QColor('#FFCC00')  # YELLOW-ORANGE - Temptation (かかり)
+                    outline = QColor('#FF6600')
                 elif name in self.rushing_participants:
                     color = QColor('#FF6600')  # ORANGE - Rushing (掛かり)
                     outline = QColor('#FFFFFF')
@@ -1130,6 +1227,7 @@ class RaceCanvasWidget(QWidget):
     def update_display(self, sim_data, uma_distances, uma_finished, uma_dnf, 
                       uma_incidents, uma_colors, gate_numbers, track_margin, 
                       duel_participants=None, rushing_participants=None, 
+                      temptation_participants=None,
                       spot_struggle_participants=None, skill_active_participants=None):
         """Update display data"""
         self.sim_data = sim_data
@@ -1145,6 +1243,8 @@ class RaceCanvasWidget(QWidget):
             self.duel_participants = duel_participants
         if rushing_participants is not None:
             self.rushing_participants = rushing_participants
+        if temptation_participants is not None:
+            self.temptation_participants = temptation_participants
         if spot_struggle_participants is not None:
             self.spot_struggle_participants = spot_struggle_participants
             self.duel_participants = duel_participants
@@ -1191,6 +1291,7 @@ class UmaRacingGUI(QMainWindow):
         self.duel_active = False
         self.duel_participants = set()
         self.rushing_participants = set()
+        self.temptation_participants = set()  # Track Uma in temptation state
         self.spot_struggle_participants = set()
         self.skill_active_participants = set()  # Track Uma with active skills
         self.duel_start_time = 0
@@ -1202,6 +1303,7 @@ class UmaRacingGUI(QMainWindow):
         self.distance_callouts_made = set()
         self.last_incident_commentary = 0
         self.last_position_commentary = 0
+        self.last_phase_commentary = 0
         self.last_speed_commentary = 0
         self.last_dnf_commentary = 0
         self.dnf_commented = set()
@@ -1604,8 +1706,10 @@ class UmaRacingGUI(QMainWindow):
         
         # Mechanic tracking for visual indicators
         self.rushing_participants = set()
+        self.temptation_participants = set()
         self.spot_struggle_participants = set()
         self._rushing_announced = set()
+        self._temptation_announced = set()
         self._spot_struggle_announced = set()
 
         self.sim_time = 0.0
@@ -1618,6 +1722,7 @@ class UmaRacingGUI(QMainWindow):
         self.distance_callouts_made.clear()
         self.last_incident_commentary = 0
         self.last_position_commentary = 0
+        self.last_phase_commentary = 0
         self.last_speed_commentary = 0
         self.commentary_history.clear()
 
@@ -1865,6 +1970,7 @@ class UmaRacingGUI(QMainWindow):
         # Track mechanic states for indicators
         new_duel_participants = set()
         new_rushing_participants = set()
+        new_temptation_participants = set()
         new_spot_struggle_participants = set()
         new_skill_active_participants = set()
         
@@ -1904,6 +2010,8 @@ class UmaRacingGUI(QMainWindow):
                 new_duel_participants.add(name)
             if state.is_rushing:
                 new_rushing_participants.add(name)
+            if hasattr(state, 'is_tempted') and state.is_tempted:
+                new_temptation_participants.add(name)
             if state.is_in_spot_struggle:
                 new_spot_struggle_participants.add(name)
             
@@ -1947,9 +2055,23 @@ class UmaRacingGUI(QMainWindow):
             gate = self.gate_numbers.get(name, '?')
             self.append_output(f"[{self.sim_time:.1f}s] 💥 [{gate}]{name} enters SPOT STRUGGLE!\n")
         
+        # Temptation commentary (かかり - losing control)
+        if not hasattr(self, '_temptation_announced'):
+            self._temptation_announced = set()
+        new_tempted = new_temptation_participants - self._temptation_announced
+        for name in new_tempted:
+            self._temptation_announced.add(name)
+            gate = self.gate_numbers.get(name, '?')
+            self.append_output(f"[{self.sim_time:.1f}s] 😤 [{gate}]{name} is losing control! (TEMPTATION)\n")
+        # Clear announced when temptation ends (so it can announce again)
+        ended_temptation = self._temptation_announced - new_temptation_participants
+        for name in ended_temptation:
+            self._temptation_announced.discard(name)
+        
         # Update indicator sets
         self.duel_participants = new_duel_participants
         self.rushing_participants = new_rushing_participants
+        self.temptation_participants = new_temptation_participants
         self.spot_struggle_participants = new_spot_struggle_participants
         self.skill_active_participants = new_skill_active_participants
 
@@ -2408,10 +2530,11 @@ class UmaRacingGUI(QMainWindow):
                         self.last_incident_commentary = self.sim_time
                         break
         
-        if not commentaries:
+        if not commentaries and self.sim_time - self.last_phase_commentary > 10.0:
             phase_commentary = self.get_phase_commentary(race_progress, leader_name, positions, remaining_distance)
             if phase_commentary:
                 commentaries.append(phase_commentary)
+                self.last_phase_commentary = self.sim_time
         
         if self.sim_time - self.last_speed_commentary > 5.0 and not commentaries:
             speed_commentary = self.get_speed_position_commentary(positions, race_distance)
@@ -2455,7 +2578,7 @@ class UmaRacingGUI(QMainWindow):
         overtaken = []
         for pos_name, distance in positions:
             current_pos = positions.index((pos_name, distance)) + 1
-            if current_pos == new_pos + 1:
+            if current_pos == new_pos + 1 and pos_name != name:  # Exclude self-overtake
                 overtaken.append(pos_name)
 
         overtaken_name = overtaken[0] if overtaken else "a rival"
@@ -2601,6 +2724,7 @@ class UmaRacingGUI(QMainWindow):
             self.track_margin,
             duel_participants=getattr(self, 'duel_participants', set()),
             rushing_participants=getattr(self, 'rushing_participants', set()),
+            temptation_participants=getattr(self, 'temptation_participants', set()),
             spot_struggle_participants=getattr(self, 'spot_struggle_participants', set()),
             skill_active_participants=getattr(self, 'skill_active_participants', set())
         )
@@ -2668,6 +2792,7 @@ class UmaRacingGUI(QMainWindow):
         self.distance_callouts_made.clear()
         self.last_incident_commentary = 0
         self.last_position_commentary = 0
+        self.last_phase_commentary = 0
         self.last_speed_commentary = 0
         self.commentary_history.clear()
         
@@ -2684,30 +2809,54 @@ class UmaRacingGUI(QMainWindow):
         self.append_output("Simulation reset.\n")
 
     def display_final_results(self):
-        """Display final race results"""
+        """Display final race results with traditional horse racing margins"""
         if not self.finish_times and not any(dnf['dnf'] for dnf in self.uma_dnf.values()):
             self.append_output("No results to display.\n")
             return
             
-        self.append_output("\n" + "="*50 + "\n")
+        self.append_output("\n" + "="*60 + "\n")
         self.append_output("FINAL RACE RESULTS\n")
-        self.append_output("="*50 + "\n")
+        self.append_output("="*60 + "\n")
+        
+        # Calculate average speed for margin conversion
+        avg_speed = 17.0  # Default
+        if self.race_engine:
+            avg_speed = self.race_engine.base_speed
         
         # Use engine's get_final_results if available
         if self.race_engine:
             results = self.race_engine.get_final_results()
+            winner_time = None
+            prev_time = None
+            
             for pos, name, time_or_dist, status in results:
                 gate_num = self.gate_numbers.get(name, "?")
+                
                 if status == "FIN":
-                    self.append_output(f"{pos}. [{gate_num}] {name} - {time_or_dist:.2f}s\n")
+                    # Track winner time for margins
+                    if winner_time is None:
+                        winner_time = time_or_dist
+                        prev_time = time_or_dist
+                        self.append_output(f"{pos:2d}. [{gate_num:>2}] {name:20s}  {time_or_dist:7.2f}s\n")
+                    else:
+                        # Calculate margin from previous horse
+                        margin_from_prev = time_gap_to_margin(time_or_dist - prev_time, avg_speed)
+                        prev_time = time_or_dist
+                        self.append_output(f"{pos:2d}. [{gate_num:>2}] {name:20s}  {time_or_dist:7.2f}s  [{margin_from_prev}]\n")
                 else:
-                    self.append_output(f"{pos}. [{gate_num}] {name} - {status} at {time_or_dist:.0f}m\n")
+                    self.append_output(f"{pos:2d}. [{gate_num:>2}] {name:20s}  {status} at {time_or_dist:.0f}m\n")
         else:
             # Legacy fallback
             finished_umas = sorted(self.finish_times.items(), key=lambda x: x[1])
+            prev_time = None
             for i, (name, time) in enumerate(finished_umas):
                 gate_num = self.gate_numbers.get(name, "?")
-                self.append_output(f"{i+1}. [{gate_num}] {name} - {time:.2f}s\n")
+                if prev_time is None:
+                    self.append_output(f"{i+1:2d}. [{gate_num:>2}] {name:20s}  {time:7.2f}s\n")
+                else:
+                    margin = time_gap_to_margin(time - prev_time, avg_speed)
+                    self.append_output(f"{i+1:2d}. [{gate_num:>2}] {name:20s}  {time:7.2f}s  [{margin}]\n")
+                prev_time = time
         
         dnf_umas = [(name, dnf_data) for name, dnf_data in self.uma_dnf.items() if dnf_data.get('dnf', False)]
         if dnf_umas:
@@ -2734,8 +2883,11 @@ class UmaRacingGUI(QMainWindow):
         self.append_output(f"\nSUMMARY: {total_finished}/{total_starters} finished, {total_dnf} DNF\n")
         if self.finish_times:
             self.append_output(f"Winning time: {winning_time:.2f}s\n")
-            self.append_output(f"Time gap (1st to last): {time_gap:.2f}s\n")
-        self.append_output("="*50 + "\n")
+            if len(finished_umas) > 1:
+                # Show margin in lengths for total gap
+                total_margin = time_gap_to_margin(time_gap, avg_speed if self.race_engine else 17.0)
+                self.append_output(f"Gap (1st to last): {time_gap:.2f}s ({total_margin})\n")
+        self.append_output("="*60 + "\n")
 
     def show_stat_priorities(self):
         """Display stat priorities for each running style"""
