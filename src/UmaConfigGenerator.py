@@ -161,11 +161,13 @@ class UmaConfigGenerator:
         gate_mood_frame.grid(row=0, column=4, columnspan=2, sticky=tk.W, padx=(10, 0))
         
         ttk.Label(gate_mood_frame, text="Gate:").grid(row=0, column=0, sticky=tk.W)
+        # Use editable Combobox - includes gates 1-18 standard + 19-24 for extra participants
         self.uma_gate = ttk.Combobox(gate_mood_frame, 
-                                     values=[str(i) for i in range(1, 19)], 
-                                     width=3)
+                                     values=[str(i) for i in range(1, 25)],  # 1-24
+                                     width=4)
         self.uma_gate.grid(row=0, column=1, sticky=tk.W, padx=(5, 0))
         self.uma_gate.set("1")
+        # Note: Not setting state="readonly" so users can type even higher numbers if needed
         
         ttk.Label(gate_mood_frame, text="Mood:").grid(row=0, column=2, sticky=tk.W, padx=(10, 0))
         self.uma_mood = ttk.Combobox(gate_mood_frame, 
@@ -536,9 +538,11 @@ class UmaConfigGenerator:
     def add_uma(self):
         """Add a new empty uma"""
         # Assign gate number based on number of existing umas
+        # No longer capped at 18 - supports extra participants (19, 20, etc.)
         gate_num = len(self.umas) + 1
-        if gate_num > 18:
-            gate_num = 18  # Max 18 gates
+        
+        # Default skills - empty for gate 19+ (custom participants)
+        default_skills = []
         
         new_uma = {
             "name": "New Uma",
@@ -548,7 +552,7 @@ class UmaConfigGenerator:
             "stats": {"Speed": 600, "Stamina": 600, "Power": 600, "Guts": 600, "Wit": 600},
             "distance_aptitude": {"Sprint": "B", "Mile": "B", "Medium": "B", "Long": "B"},
             "surface_aptitude": {"Dirt": "B", "Turf": "B"},
-            "skills": []
+            "skills": default_skills
         }
 
         self.umas.append(new_uma)
@@ -632,8 +636,17 @@ class UmaConfigGenerator:
         style_code = self.uma_running_style.get().split(" - ")[0]
         uma["running_style"] = style_code
         
-        # Update gate number and mood
-        uma["gate_number"] = int(self.uma_gate.get())
+        # Update gate number (validate it's a positive integer)
+        try:
+            gate_num = int(self.uma_gate.get())
+            if gate_num < 1:
+                gate_num = 1
+            uma["gate_number"] = gate_num
+        except ValueError:
+            messagebox.showerror("Error", "Gate number must be a valid integer")
+            return
+        
+        # Update mood
         uma["mood"] = self.uma_mood.get()
         
         # Update stats

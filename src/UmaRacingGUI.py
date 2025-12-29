@@ -105,7 +105,7 @@ def time_gap_to_margin(time_gap: float, avg_speed: float = 17.0) -> str:
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QComboBox, QLabel, QFileDialog, QTextEdit, QSplitter,
-    QFrame, QMessageBox
+    QFrame, QMessageBox, QListWidget, QListWidgetItem, QScrollArea
 )
 from PySide6.QtCore import Qt, QTimer, QSize, QPoint, QPointF
 from PySide6.QtGui import QPainter, QPen, QColor, QFont, QBrush, QPainterPath
@@ -1409,6 +1409,12 @@ class UmaRacingGUI(QMainWindow):
         # Splitter for canvas and output
         splitter = QSplitter(Qt.Orientation.Vertical)
         
+        # Horizontal layout for canvas + positions sidebar
+        canvas_sidebar_widget = QWidget()
+        canvas_sidebar_layout = QHBoxLayout(canvas_sidebar_widget)
+        canvas_sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        canvas_sidebar_layout.setSpacing(5)
+        
         # Canvas frame - larger for curved track display
         self.canvas_frame = QFrame()
         self.canvas_frame.setStyleSheet("background-color: #3a665a;")
@@ -1422,7 +1428,60 @@ class UmaRacingGUI(QMainWindow):
         self.race_canvas.setMinimumHeight(440)  # Ensure canvas doesn't shrink
         canvas_layout.addWidget(self.race_canvas)
         
-        splitter.addWidget(self.canvas_frame)
+        canvas_sidebar_layout.addWidget(self.canvas_frame, stretch=4)
+        
+        # === F1-STYLE POSITIONS SIDEBAR ===
+        self.positions_frame = QFrame()
+        self.positions_frame.setStyleSheet("""
+            QFrame {
+                background-color: #1a1a2e;
+                border: 2px solid #16213e;
+                border-radius: 5px;
+            }
+        """)
+        self.positions_frame.setMinimumWidth(180)
+        self.positions_frame.setMaximumWidth(220)
+        positions_layout = QVBoxLayout(self.positions_frame)
+        positions_layout.setContentsMargins(5, 5, 5, 5)
+        positions_layout.setSpacing(2)
+        
+        # Header
+        positions_header = QLabel("🏁 LIVE POSITIONS")
+        positions_header.setStyleSheet("""
+            QLabel {
+                color: #ffffff;
+                font-weight: bold;
+                font-size: 11px;
+                padding: 5px;
+                background-color: #0f3460;
+                border-radius: 3px;
+            }
+        """)
+        positions_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        positions_layout.addWidget(positions_header)
+        
+        # Positions list
+        self.positions_list = QListWidget()
+        self.positions_list.setStyleSheet("""
+            QListWidget {
+                background-color: #1a1a2e;
+                border: none;
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 10px;
+            }
+            QListWidget::item {
+                padding: 3px 5px;
+                border-bottom: 1px solid #16213e;
+            }
+            QListWidget::item:selected {
+                background-color: #16213e;
+            }
+        """)
+        positions_layout.addWidget(self.positions_list)
+        
+        canvas_sidebar_layout.addWidget(self.positions_frame, stretch=0)
+        
+        splitter.addWidget(canvas_sidebar_widget)
         
         # Output text area
         self.output_text = QTextEdit()
@@ -1825,12 +1884,28 @@ class UmaRacingGUI(QMainWindow):
             '#AED581', '#FFD54F', '#CE93D8', '#FF8A65', '#90CAF9', '#C5E1A5'
         ]
         
+        # Try to get gate numbers from config, fallback to sequential
+        config_umas = self.config_data.get('umas', []) if self.config_data else []
+        uma_gate_map = {}
+        for uma_data in config_umas:
+            uma_name = uma_data.get('name', '')
+            gate = uma_data.get('gate_number', 0)
+            if uma_name and gate:
+                uma_gate_map[uma_name] = gate
+        
         for i, name in enumerate(uma_stats.keys()):
-            gate_number = i + 1
+            # Use gate from config if available, otherwise use index + 1
+            gate_number = uma_gate_map.get(name, i + 1)
             self.gate_numbers[name] = gate_number
             color = colors[i % len(colors)]
             self.uma_colors[name] = color
             self.uma_icons[name] = (None, None, None)  # Placeholder for PySide6
+        
+        # Initialize positions sidebar with starting positions (by gate number)
+        starting_positions = [(name, 0) for name in uma_stats.keys()]
+        # Sort by gate number for initial display
+        starting_positions.sort(key=lambda x: self.gate_numbers.get(x[0], 999))
+        self.update_positions_sidebar(starting_positions)
             
         self.append_output(f"Initialized {len(uma_stats)} umas on track.\n")
 
@@ -2707,6 +2782,111 @@ class UmaRacingGUI(QMainWindow):
 
         return random.choice(lines)
     
+    def update_positions_sidebar(self, frame_positions):
+        """Update the F1-style positions sidebar with current race standings"""
+        self.positions_list.clear()
+        
+        if not frame_positions:
+            return
+        
+        # Separate finished, DNF, and still-racing participants
+        finished_umas = []
+        racing_umas = []
+        dnf_umas = []
+        
+        for name, distance in frame_positions:
+            if self.uma_finished.get(name, False):
+                finish_time = self.finish_times.get(name, float('inf'))
+                finished_umas.append((name, distance, finish_time))
+            elif self.uma_dnf.get(name, {}).get('dnf', False):
+                dnf_umas.append((name, distance))
+            else:
+                racing_umas.append((name, distance))
+        
+        # Sort finished umas by finish time (fastest first)
+        finished_umas.sort(key=lambda x: x[2])
+        
+        # Sort racing umas by distance (furthest first)  
+        racing_umas.sort(key=lambda x: x[1], reverse=True)
+        
+        # Combine: finished first (by time), then racing (by distance), then DNF
+        sorted_positions = []
+        for name, distance, _ in finished_umas:
+            sorted_positions.append((name, distance))
+        for name, distance in racing_umas:
+            sorted_positions.append((name, distance))
+        for name, distance in dnf_umas:
+            sorted_positions.append((name, distance))
+        
+        # Calculate leader distance (for gap calculation of racing umas)
+        # Leader is either the last finished uma's distance or the furthest racing uma
+        if racing_umas:
+            leader_distance = racing_umas[0][1]
+        elif sorted_positions:
+            leader_distance = sorted_positions[0][1]
+        else:
+            leader_distance = 0
+        
+        # Get winner time for finished gap calculation
+        winner_time = finished_umas[0][2] if finished_umas else None
+        
+        for i, (name, distance) in enumerate(sorted_positions):
+            position = i + 1
+            gate = self.gate_numbers.get(name, '?')
+            color = self.uma_colors.get(name, '#ffffff')
+            
+            # Calculate gap
+            gap_text = ""
+            status = ""
+            
+            if self.uma_finished.get(name, False):
+                status = " 🏁"
+                # Show time gap from winner
+                if winner_time is not None:
+                    finish_time = self.finish_times.get(name, 0)
+                    time_gap = finish_time - winner_time
+                    if time_gap > 0:
+                        gap_text = f" +{time_gap:.2f}s"
+            elif self.uma_dnf.get(name, {}).get('dnf', False):
+                status = " ❌"
+                gap_text = " DNF"
+            else:
+                # Still racing - show distance gap from leader
+                gap_meters = leader_distance - distance
+                if gap_meters <= 0:
+                    gap_text = ""
+                elif gap_meters < 2.4:
+                    gap_text = f" +{gap_meters:.1f}m"
+                else:
+                    lengths = gap_meters / 2.4
+                    gap_text = f" +{lengths:.1f}L"
+                
+                # Status indicators for racing umas
+                if name in getattr(self, 'duel_participants', set()):
+                    status = " 🔥"
+                elif name in getattr(self, 'rushing_participants', set()):
+                    status = " ⚡"
+                elif name in getattr(self, 'temptation_participants', set()):
+                    status = " 😤"
+                elif name in getattr(self, 'skill_active_participants', set()):
+                    status = " ✨"
+            
+            # Format: "1: Name (G5) +2.3L 🏁"
+            item_text = f"{position:2d}: {name} (G{gate}){gap_text}{status}"
+            
+            item = QListWidgetItem(item_text)
+            item.setForeground(QColor(color))
+            
+            # Highlight top 3
+            if position == 1:
+                item.setBackground(QColor(255, 215, 0, 40))  # Gold tint
+            elif position == 2:
+                item.setBackground(QColor(192, 192, 192, 40))  # Silver tint  
+            elif position == 3:
+                item.setBackground(QColor(205, 127, 50, 40))  # Bronze tint
+            
+            self.positions_list.addItem(item)
+    
     def update_display(self, frame_positions, race_distance):
         """Update display - update the canvas widget"""
         if not self.sim_data:
@@ -2728,6 +2908,9 @@ class UmaRacingGUI(QMainWindow):
             spot_struggle_participants=getattr(self, 'spot_struggle_participants', set()),
             skill_active_participants=getattr(self, 'skill_active_participants', set())
         )
+        
+        # Update F1-style positions sidebar
+        self.update_positions_sidebar(frame_positions)
         
         # Update status labels
         if frame_positions:
@@ -2813,6 +2996,18 @@ class UmaRacingGUI(QMainWindow):
         if not self.finish_times and not any(dnf['dnf'] for dnf in self.uma_dnf.values()):
             self.append_output("No results to display.\n")
             return
+        
+        # Update sidebar with final standings (sorted by finish time)
+        final_positions = []
+        finished = [(name, time) for name, time in self.finish_times.items()]
+        finished.sort(key=lambda x: x[1])
+        for name, _ in finished:
+            final_positions.append((name, self.uma_distances.get(name, 0)))
+        # Add DNF umas at the end
+        for name in self.uma_distances.keys():
+            if name not in self.finish_times and self.uma_dnf.get(name, {}).get('dnf', False):
+                final_positions.append((name, self.uma_distances.get(name, 0)))
+        self.update_positions_sidebar(final_positions)
             
         self.append_output("\n" + "="*60 + "\n")
         self.append_output("FINAL RACE RESULTS\n")
