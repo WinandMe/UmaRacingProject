@@ -1840,6 +1840,22 @@ INTERNATIONAL_RACES = {
         country="United States"
     ),
     
+    "florida_derby": Race(
+        id="florida_derby",
+        name="Florida Derby",
+        name_jp="フロリダダービー",
+        distance=1800,  # 1 1/8 miles
+        race_type=RaceType.MILE,
+        surface=Surface.DIRT,
+        racecourse=Racecourse.GULFSTREAM,
+        direction=Direction.LEFT,
+        month=3,
+        grade="G1",
+        eligibility="3yo",
+        prize_money=100_000_000,
+        country="United States"
+    ),
+    
     "preakness_stakes": Race(
         id="preakness_stakes",
         name="Preakness Stakes",
