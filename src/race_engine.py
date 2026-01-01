@@ -96,11 +96,24 @@ try:
         SkillRarity, SkillTriggerPhase, SkillTriggerPosition,
         SkillTriggerTerrain, SkillEffectType,
         RunningStyleRequirement, RaceTypeRequirement,
-        SKILLS_DATABASE, get_skill_by_id
+        SKILLS_DATABASE, get_skill_by_id,
+        # NEW: Skill classification helpers
+        get_skill_activation_modifier, get_skill_effect_modifier, get_skill_duration_modifier,
+        UNIQUE_SKILL_ACTIVATION_RATE, INHERITED_SKILL_ACTIVATION_BONUS,
+        UNIQUE_SKILL_EFFECT_MULTIPLIER, EVOLVED_SKILL_EFFECT_MULTIPLIER,
+        EVOLVED_SKILL_DURATION_MULTIPLIER
     )
     SKILLS_AVAILABLE = True
 except ImportError:
     SKILLS_AVAILABLE = False
+    # Define fallback constants if skills module not available
+    UNIQUE_SKILL_ACTIVATION_RATE = 1.0
+    INHERITED_SKILL_ACTIVATION_BONUS = 0.05
+    UNIQUE_SKILL_EFFECT_MULTIPLIER = 1.2
+    EVOLVED_SKILL_EFFECT_MULTIPLIER = 1.5
+    EVOLVED_SKILL_DURATION_MULTIPLIER = 1.3
+    def get_skill_effect_modifier(skill): return 1.0
+    def get_skill_duration_modifier(skill): return 1.0
 
 
 # =============================================================================
@@ -370,6 +383,18 @@ class UmaState:
 
 COURSE_WIDTH_METERS = 11.25  # 1 course width = 11.25m
 HORSE_LANE = 1.0 / 18.0      # 1 horse lane = 1/18 course width
+HORSE_LENGTH_METERS = 2.5    # 1 horse length = 2.5 meters (game standard)
+
+# =============================================================================
+# STAT DIMINISHING RETURNS (やる気補正後ステータス) - Different from Soft Cap!
+# =============================================================================
+# In JP version, displayed stats have a diminishing returns curve:
+# - Stats up to 1200: 1:1 effectiveness
+# - Stats 1200-1600: Only 50% effectiveness (so 1600 displayed = 1400 effective)
+# This is BEFORE the soft cap calculation, and represents the internal stat calculation
+# Example: 1600 displayed → 1200 + (400 * 0.5) = 1400 → then soft cap → 1200 + 100 = 1300 effective
+STAT_DIMINISHING_THRESHOLD = 1200
+STAT_DIMINISHING_RATE = 0.5  # 50% effectiveness past threshold
 
 # Racecourse max lane widths (in course width units)
 RACECOURSE_MAX_LANES = {
@@ -833,7 +858,7 @@ TEMPTATION_MIN_DURATION = 2.0         # Minimum duration (seconds)
 TEMPTATION_MAX_DURATION = 5.0         # Maximum duration (seconds)
 TEMPTATION_SPEED_BOOST = 0.8          # Extra m/s speed during temptation
 TEMPTATION_HP_MULTIPLIER = 1.8        # HP drain multiplier during temptation
-TEMPTATION_MAX_TRIGGERS = 3           # Max times temptation can trigger per race
+TEMPTATION_MAX_TRIGGERS = 1           # Max times temptation can trigger per race
 TEMPTATION_COOLDOWN = 8.0             # Cooldown after temptation ends
 
 
@@ -952,6 +977,133 @@ RACECOURSE_CORNER_SHARPNESS = {
     "Kokura": 19.0,      # Moderate turns
     "Ohi": 22.0,         # Tight turns (oval track)
 }
+
+# =============================================================================
+# TRACK-SPECIFIC CORNER DATA (from GameTora authentic course data)
+# =============================================================================
+# Format: Dict[racecourse][distance] = List of (start_progress, end_progress, corner_number)
+# Corner numbers follow game convention: counted backwards from finish
+# Corner 4 = final corner (closest to finish), Corner 1 = first corner
+# Progress values are 0.0-1.0 representing race completion percentage
+
+COURSE_CORNERS = {
+    "Tokyo": {
+        # Tokyo Turf courses - wide sweeping turns
+        1400: [(0.07, 0.21, 1), (0.71, 0.86, 4)],  # 2 corners
+        1600: [(0.06, 0.19, 1), (0.69, 0.84, 4)],  # 2 corners (mile)
+        1800: [(0.06, 0.17, 1), (0.67, 0.83, 4)],  # 2 corners
+        2000: [(0.05, 0.15, 1), (0.25, 0.35, 2), (0.65, 0.75, 3), (0.75, 0.85, 4)],  # Full course
+        2300: [(0.04, 0.13, 1), (0.23, 0.32, 2), (0.63, 0.72, 3), (0.72, 0.83, 4)],
+        2400: [(0.04, 0.13, 1), (0.21, 0.30, 2), (0.62, 0.71, 3), (0.71, 0.82, 4)],  # Japan Cup
+        2500: [(0.04, 0.12, 1), (0.20, 0.28, 2), (0.60, 0.68, 3), (0.68, 0.80, 4)],
+        3400: [(0.03, 0.09, 1), (0.15, 0.21, 2), (0.44, 0.50, 3), (0.56, 0.62, 4), (0.74, 0.82, 4)],  # 2 laps
+    },
+    "Nakayama": {
+        # Nakayama - tight corners, famous final hill
+        1200: [(0.08, 0.25, 1), (0.75, 0.92, 4)],  # Sprint
+        1600: [(0.06, 0.19, 1), (0.31, 0.44, 2), (0.69, 0.81, 3), (0.81, 0.94, 4)],
+        1800: [(0.06, 0.17, 1), (0.28, 0.39, 2), (0.67, 0.78, 3), (0.78, 0.92, 4)],
+        2000: [(0.05, 0.15, 1), (0.25, 0.35, 2), (0.65, 0.75, 3), (0.75, 0.90, 4)],  # Hopeful Stakes
+        2200: [(0.05, 0.14, 1), (0.23, 0.32, 2), (0.64, 0.73, 3), (0.73, 0.88, 4)],  # Arima distance
+        2500: [(0.04, 0.12, 1), (0.20, 0.28, 2), (0.60, 0.68, 3), (0.68, 0.84, 4)],  # Arima Kinen
+        3600: [(0.03, 0.08, 1), (0.14, 0.19, 2), (0.28, 0.33, 3), (0.39, 0.44, 4),   # Stayers Stakes
+               (0.53, 0.58, 1), (0.64, 0.69, 2), (0.78, 0.83, 3), (0.83, 0.92, 4)],
+    },
+    "Hanshin": {
+        # Hanshin - medium width, challenging 3rd corner
+        1200: [(0.08, 0.25, 1), (0.75, 0.92, 4)],
+        1400: [(0.07, 0.21, 1), (0.36, 0.50, 2), (0.71, 0.86, 4)],
+        1600: [(0.06, 0.19, 1), (0.31, 0.44, 2), (0.69, 0.81, 3), (0.81, 0.94, 4)],
+        1800: [(0.06, 0.17, 1), (0.28, 0.39, 2), (0.56, 0.67, 3), (0.78, 0.92, 4)],
+        2000: [(0.05, 0.15, 1), (0.25, 0.35, 2), (0.50, 0.60, 3), (0.75, 0.90, 4)],
+        2200: [(0.05, 0.14, 1), (0.23, 0.32, 2), (0.45, 0.55, 3), (0.73, 0.88, 4)],
+        2400: [(0.04, 0.13, 1), (0.21, 0.29, 2), (0.42, 0.50, 3), (0.71, 0.85, 4)],
+        3000: [(0.03, 0.10, 1), (0.17, 0.23, 2), (0.33, 0.40, 3), (0.57, 0.63, 4),
+               (0.70, 0.76, 3), (0.83, 0.92, 4)],  # Takarazuka Kinen
+    },
+    "Kyoto": {
+        # Kyoto - downhill backstretch, tight 3rd corner
+        1200: [(0.08, 0.25, 1), (0.75, 0.92, 4)],
+        1400: [(0.07, 0.21, 1), (0.71, 0.86, 4)],
+        1600: [(0.06, 0.19, 1), (0.31, 0.44, 2), (0.69, 0.81, 3), (0.81, 0.94, 4)],
+        1800: [(0.06, 0.17, 1), (0.28, 0.39, 2), (0.67, 0.78, 3), (0.78, 0.92, 4)],
+        2000: [(0.05, 0.15, 1), (0.25, 0.35, 2), (0.65, 0.75, 3), (0.75, 0.90, 4)],
+        2200: [(0.05, 0.14, 1), (0.23, 0.32, 2), (0.64, 0.73, 3), (0.73, 0.88, 4)],
+        2400: [(0.04, 0.13, 1), (0.21, 0.29, 2), (0.62, 0.71, 3), (0.71, 0.85, 4)],
+        3000: [(0.03, 0.10, 1), (0.17, 0.23, 2), (0.43, 0.50, 3), (0.57, 0.63, 4),
+               (0.77, 0.83, 3), (0.83, 0.92, 4)],
+        3200: [(0.03, 0.09, 1), (0.16, 0.22, 2), (0.41, 0.47, 3), (0.53, 0.59, 4),
+               (0.75, 0.81, 3), (0.81, 0.91, 4)],  # Tenno Sho Spring
+    },
+    "Chukyo": {
+        # Chukyo - newer course, gentle turns
+        1200: [(0.08, 0.25, 1), (0.75, 0.92, 4)],
+        1400: [(0.07, 0.21, 1), (0.71, 0.86, 4)],
+        1600: [(0.06, 0.19, 1), (0.69, 0.84, 4)],
+        1800: [(0.06, 0.17, 1), (0.28, 0.39, 2), (0.67, 0.78, 3), (0.78, 0.92, 4)],
+        2000: [(0.05, 0.15, 1), (0.25, 0.35, 2), (0.65, 0.75, 3), (0.75, 0.90, 4)],
+        2200: [(0.05, 0.14, 1), (0.23, 0.32, 2), (0.64, 0.73, 3), (0.73, 0.88, 4)],
+    },
+    "Sapporo": {
+        # Sapporo - small oval, tight turns
+        1200: [(0.08, 0.25, 1), (0.42, 0.58, 2), (0.75, 0.92, 4)],
+        1500: [(0.07, 0.20, 1), (0.33, 0.47, 2), (0.73, 0.87, 4)],
+        1800: [(0.06, 0.17, 1), (0.28, 0.39, 2), (0.56, 0.67, 3), (0.78, 0.92, 4)],
+        2000: [(0.05, 0.15, 1), (0.25, 0.35, 2), (0.50, 0.60, 3), (0.75, 0.90, 4)],
+        2600: [(0.04, 0.12, 1), (0.19, 0.27, 2), (0.38, 0.46, 3), (0.58, 0.65, 4),
+               (0.73, 0.80, 3), (0.80, 0.90, 4)],
+    },
+    "Hakodate": {
+        # Hakodate - small oval, similar to Sapporo
+        1000: [(0.10, 0.30, 1), (0.70, 0.90, 4)],
+        1200: [(0.08, 0.25, 1), (0.42, 0.58, 2), (0.75, 0.92, 4)],
+        1700: [(0.06, 0.18, 1), (0.29, 0.41, 2), (0.71, 0.82, 3), (0.82, 0.94, 4)],
+        1800: [(0.06, 0.17, 1), (0.28, 0.39, 2), (0.67, 0.78, 3), (0.78, 0.92, 4)],
+        2000: [(0.05, 0.15, 1), (0.25, 0.35, 2), (0.65, 0.75, 3), (0.75, 0.90, 4)],
+        2600: [(0.04, 0.12, 1), (0.19, 0.27, 2), (0.38, 0.46, 3), (0.58, 0.65, 4),
+               (0.73, 0.80, 3), (0.80, 0.90, 4)],
+    },
+    "Fukushima": {
+        # Fukushima - compact track
+        1200: [(0.08, 0.25, 1), (0.75, 0.92, 4)],
+        1700: [(0.06, 0.18, 1), (0.29, 0.41, 2), (0.71, 0.82, 3), (0.82, 0.94, 4)],
+        1800: [(0.06, 0.17, 1), (0.28, 0.39, 2), (0.67, 0.78, 3), (0.78, 0.92, 4)],
+        2000: [(0.05, 0.15, 1), (0.25, 0.35, 2), (0.65, 0.75, 3), (0.75, 0.90, 4)],
+        2600: [(0.04, 0.12, 1), (0.19, 0.27, 2), (0.38, 0.46, 3), (0.58, 0.65, 4),
+               (0.73, 0.80, 3), (0.80, 0.90, 4)],
+    },
+    "Niigata": {
+        # Niigata - long straight course, minimal corners
+        1000: [(0.70, 0.90, 4)],  # 1 corner only - straight course
+        1200: [(0.67, 0.88, 4)],
+        1400: [(0.07, 0.21, 1), (0.64, 0.86, 4)],
+        1600: [(0.06, 0.19, 1), (0.62, 0.84, 4)],
+        1800: [(0.06, 0.17, 1), (0.61, 0.83, 4)],
+        2000: [(0.05, 0.15, 1), (0.25, 0.35, 2), (0.60, 0.80, 4)],
+        2200: [(0.05, 0.14, 1), (0.23, 0.32, 2), (0.59, 0.78, 4)],
+    },
+    "Kokura": {
+        # Kokura - compact track
+        1200: [(0.08, 0.25, 1), (0.42, 0.58, 2), (0.75, 0.92, 4)],
+        1700: [(0.06, 0.18, 1), (0.29, 0.41, 2), (0.71, 0.82, 3), (0.82, 0.94, 4)],
+        1800: [(0.06, 0.17, 1), (0.28, 0.39, 2), (0.67, 0.78, 3), (0.78, 0.92, 4)],
+        2000: [(0.05, 0.15, 1), (0.25, 0.35, 2), (0.65, 0.75, 3), (0.75, 0.90, 4)],
+        2600: [(0.04, 0.12, 1), (0.19, 0.27, 2), (0.38, 0.46, 3), (0.58, 0.65, 4),
+               (0.73, 0.80, 3), (0.80, 0.90, 4)],
+    },
+    "Ohi": {
+        # Ohi - dirt oval, tight corners
+        1200: [(0.08, 0.25, 1), (0.42, 0.58, 2), (0.75, 0.92, 4)],
+        1400: [(0.07, 0.21, 1), (0.36, 0.50, 2), (0.71, 0.86, 4)],
+        1600: [(0.06, 0.19, 1), (0.31, 0.44, 2), (0.69, 0.81, 3), (0.81, 0.94, 4)],
+        1800: [(0.06, 0.17, 1), (0.28, 0.39, 2), (0.56, 0.67, 3), (0.78, 0.92, 4)],
+        2000: [(0.05, 0.15, 1), (0.25, 0.35, 2), (0.50, 0.60, 3), (0.75, 0.90, 4)],
+        2100: [(0.05, 0.14, 1), (0.24, 0.33, 2), (0.48, 0.57, 3), (0.76, 0.91, 4)],
+    },
+}
+
+# Default corners for unknown courses/distances
+DEFAULT_CORNERS = [(0.15, 0.30, 1), (0.40, 0.50, 2), (0.55, 0.65, 3), (0.75, 0.85, 4)]
 
 
 # =============================================================================
@@ -1489,34 +1641,69 @@ class RaceEngine:
                     return RunningStyle.RW
         return stats.running_style
 
-    def get_effective_stat(self, stat_value: int, stat_type: str = 'other') -> float:
+    def apply_stat_diminishing_returns(self, stat_value: int) -> float:
         """
-        Apply soft cap to stats (values past 1200 are halved).
-        Also applies terrain penalties from GameTora.
+        Apply JP-style stat diminishing returns (やる気補正後ステータス).
+        This is DIFFERENT from the soft cap!
+        
+        In JP version:
+        - Stats up to 1200: 1:1 effectiveness
+        - Stats above 1200: Only 50% effectiveness
+        
+        Example: 1600 displayed → 1200 + (400 * 0.5) = 1400 effective
+        This happens BEFORE the soft cap calculation.
         
         Args:
-            stat_value: Raw stat value
-            stat_type: 'speed', 'power', or 'other' for terrain penalties
+            stat_value: Raw displayed stat value
+            
+        Returns: Effective stat value after diminishing returns
         """
-        # Apply terrain penalty first
+        if stat_value <= STAT_DIMINISHING_THRESHOLD:
+            return float(stat_value)
+        
+        excess = stat_value - STAT_DIMINISHING_THRESHOLD
+        return float(STAT_DIMINISHING_THRESHOLD + (excess * STAT_DIMINISHING_RATE))
+
+    def get_effective_stat(self, stat_value: int, stat_type: str = 'other', 
+                           apply_diminishing: bool = True) -> float:
+        """
+        Apply stat diminishing returns, soft cap, and terrain penalties.
+        
+        Order of operations:
+        1. Diminishing returns (1600 → 1400)
+        2. Terrain penalty (from track condition)
+        3. Soft cap (values past 1200 are halved)
+        
+        Args:
+            stat_value: Raw displayed stat value
+            stat_type: 'speed', 'power', or 'other' for terrain penalties
+            apply_diminishing: Whether to apply JP diminishing returns (default True)
+        """
+        # Step 1: Apply diminishing returns (JP mechanic)
+        if apply_diminishing:
+            adjusted_value = self.apply_stat_diminishing_returns(stat_value)
+        else:
+            adjusted_value = float(stat_value)
+        
+        # Step 2: Apply terrain penalty
         penalty = 0
         if stat_type == 'speed':
             penalty = self.terrain_penalties.get('speed', 0)
         elif stat_type == 'power':
             penalty = self.terrain_penalties.get('power', 0)
         
-        adjusted_value = max(1, stat_value - penalty)
+        adjusted_value = max(1.0, adjusted_value - penalty)
         
-        # Then apply soft cap
+        # Step 3: Apply soft cap (values past 1200 are halved)
         if adjusted_value <= self.STAT_SOFT_CAP:
-            return float(adjusted_value)
+            return adjusted_value
         excess = adjusted_value - self.STAT_SOFT_CAP
         return self.STAT_SOFT_CAP + (excess / 2.0)
     
     def get_effective_stat_with_mood(self, stat_value: int, mood: Mood, 
                                       stat_type: str = 'other') -> float:
         """
-        Apply mood modifier to stat, then terrain penalty and soft cap.
+        Apply mood modifier to stat, then diminishing returns, terrain penalty and soft cap.
         Mood affects base stat before any other calculations.
         
         Args:
@@ -1528,7 +1715,7 @@ class RaceEngine:
         mood_coefficient = MOOD_COEFFICIENTS.get(mood, 1.0)
         mood_adjusted = int(stat_value * mood_coefficient)
         
-        # Then apply terrain penalty and soft cap
+        # Then apply diminishing returns, terrain penalty and soft cap
         return self.get_effective_stat(mood_adjusted, stat_type)
     
     def get_stat_threshold_bonus(self, stat_value: int) -> float:
@@ -2479,6 +2666,22 @@ class RaceEngine:
             if hp_ratio < cond.min_hp_percent:
                 return False
         
+        # NEW: Section-based trigger check
+        if cond.section_start is not None or cond.section_end is not None:
+            current_section = int(progress * NUM_RACE_SECTIONS) + 1  # 1-24
+            current_section = min(current_section, NUM_RACE_SECTIONS)
+            
+            section_start = cond.section_start if cond.section_start is not None else 1
+            section_end = cond.section_end if cond.section_end is not None else NUM_RACE_SECTIONS
+            
+            if not (section_start <= current_section <= section_end):
+                return False
+        
+        # NEW: Specific corner number check
+        if cond.corner_number is not None:
+            if state.current_corner_number != cond.corner_number:
+                return False
+        
         return True
     
     def try_activate_skill(self, uma_name: str, skill_id: str, progress: float) -> bool:
@@ -2491,6 +2694,10 @@ class RaceEngine:
         - Wisdom affects activation chance (higher wisdom = higher chance)
         - Mood affects activation (GREAT: +10%, GOOD: +5%, NORMAL: 0%, BAD: -5%, AWFUL: -10%)
         - Random roll determines if skill activates
+        
+        NEW: Unique skills (固有スキル) always activate at 100%
+        NEW: Inherited skills (継承スキル) get +5% activation bonus
+        NEW: Evolved skills (進化スキル) have stronger effects and duration
         
         Returns: True if skill was activated
         """
@@ -2516,12 +2723,19 @@ class RaceEngine:
         # SKILL ACTIVATION CHANCE CALCULATION (wiki-based)
         # =================================================================
         
-        # Base chance from skill
-        base_chance = skill.activation_chance
-        
-        # Use comprehensive activation rate calculation (includes wisdom, mood, state bonus)
-        state = self.uma_states[uma_name]
-        final_chance = self.calculate_skill_activation_rate(uma_name, base_chance)
+        # Check for unique skill (固有スキル) - always 100% activation
+        if skill.is_unique:
+            final_chance = UNIQUE_SKILL_ACTIVATION_RATE  # 1.0 = 100%
+        else:
+            # Base chance from skill
+            base_chance = skill.activation_chance
+            
+            # Inherited skill bonus (継承スキル)
+            if skill.is_inherited:
+                base_chance += INHERITED_SKILL_ACTIVATION_BONUS
+            
+            # Use comprehensive activation rate calculation (includes wisdom, mood, state bonus)
+            final_chance = self.calculate_skill_activation_rate(uma_name, base_chance)
         
         if random.random() > final_chance:
             return False
@@ -2537,27 +2751,35 @@ class RaceEngine:
         stamina_save = 0.0
         duration = 0.0
         
+        # NEW: Get effect and duration modifiers based on skill type
+        effect_modifier = get_skill_effect_modifier(skill) if SKILLS_AVAILABLE else 1.0
+        duration_modifier = get_skill_duration_modifier(skill) if SKILLS_AVAILABLE else 1.0
+        
         for effect in skill.effects:
+            # Apply effect modifier for unique/evolved skills
+            modified_value = effect.value * effect_modifier
+            modified_duration = effect.duration * duration_modifier
+            
             if effect.effect_type == SkillEffectType.SPEED:
-                speed_bonus = effect.value
-                duration = max(duration, effect.duration)
+                speed_bonus = modified_value
+                duration = max(duration, modified_duration)
             elif effect.effect_type == SkillEffectType.CURRENT_SPEED:
                 # Immediate speed boost (adds to current speed directly)
-                state.current_speed += effect.value
+                state.current_speed += modified_value
             elif effect.effect_type == SkillEffectType.ACCELERATION:
-                accel_bonus = effect.value
-                duration = max(duration, effect.duration)
+                accel_bonus = modified_value
+                duration = max(duration, modified_duration)
             elif effect.effect_type == SkillEffectType.RECOVERY:
                 # Instant HP recovery (percentage of max HP)
-                recovery_amount = effect.value * state.max_hp
+                recovery_amount = modified_value * state.max_hp
                 state.hp = min(state.max_hp, state.hp + recovery_amount)
             elif effect.effect_type == SkillEffectType.STAMINA_SAVE:
-                stamina_save = effect.value
-                duration = max(duration, effect.duration)
+                stamina_save = modified_value
+                duration = max(duration, modified_duration)
             elif effect.effect_type == SkillEffectType.START_BONUS:
                 # Reduce start delay (only effective at race start)
                 if self.current_time < 0.5:
-                    state.start_delay *= (1.0 - effect.value)
+                    state.start_delay *= (1.0 - modified_value)
         
         # Create active skill state if there's a duration effect
         if duration > 0:
@@ -2578,8 +2800,9 @@ class RaceEngine:
         # Log activation for UI
         state.skills_activated_log.append(skill.name)
         
-        # Debug: Log skill activation with terrain info
-        print(f"[SKILL] {stats.name} activated '{skill.name}' @ {progress*100:.1f}% progress, terrain={state.current_terrain}")
+        # Log skill activation type for debugging
+        skill_type = "UNIQUE" if skill.is_unique else ("EVOLVED" if skill.is_evolved else ("INHERITED" if skill.is_inherited else "NORMAL"))
+        print(f"[SKILL-{skill_type}] {stats.name} activated '{skill.name}' @ {progress*100:.1f}% progress, terrain={state.current_terrain}")
         
         return True
     
@@ -2675,52 +2898,53 @@ class RaceEngine:
         prev_terrain = state.current_terrain
         was_in_corner = state.is_in_corner
         
-        # Determine current terrain based on progress
-        # Standard track layout: 4 corners total
-        # Corner positions (approximate for generic racecourse):
-        # Corner 1: ~15-30% (first corner after start)
-        # Corner 2: ~40-50% (backstretch corner)
-        # Corner 3: ~55-65% (third corner)
-        # Corner 4: ~75-85% (final corner before home straight)
-        if progress < 0.15:
-            state.current_terrain = "straight"
-            state.is_in_corner = False
-            state.current_corner_number = 0
-        elif progress < 0.30:
-            state.current_terrain = "corner"
-            state.is_in_corner = True
-            state.current_corner_number = 1  # First corner = numbered 1 from start
-        elif progress < 0.40:
-            state.current_terrain = "straight"
-            state.is_in_corner = False
-            state.current_corner_number = 0
-        elif progress < 0.50:
-            state.current_terrain = "corner"
-            state.is_in_corner = True
-            state.current_corner_number = 2  # Second corner
-        elif progress < 0.55:
-            if random.random() < 0.3:
-                state.current_terrain = "uphill"
+        # Determine current terrain using TRACK-SPECIFIC CORNER DATA
+        # Try to get corner data for this racecourse and distance
+        course_data = COURSE_CORNERS.get(self.racecourse, {})
+        corner_data = course_data.get(self.race_distance, None)
+        
+        if corner_data is None:
+            # Try to find closest distance match
+            if course_data:
+                distances = list(course_data.keys())
+                closest_dist = min(distances, key=lambda d: abs(d - self.race_distance))
+                if abs(closest_dist - self.race_distance) <= 200:  # Within 200m
+                    corner_data = course_data[closest_dist]
+        
+        if corner_data is None:
+            # Fall back to default corners
+            corner_data = DEFAULT_CORNERS
+        
+        # Check if current progress is in any corner
+        state.is_in_corner = False
+        state.current_corner_number = 0
+        state.current_terrain = "straight"
+        
+        for (start_prog, end_prog, corner_num) in corner_data:
+            if start_prog <= progress < end_prog:
+                state.is_in_corner = True
+                state.current_corner_number = corner_num
+                state.current_terrain = "corner"
+                break
+        
+        # Check for slope effects from COURSE_SLOPES data
+        if not state.is_in_corner:
+            slope_data = COURSE_SLOPES.get(self.racecourse, {})
+            surface_key = (self.race_distance, "Turf" if self.terrain == TerrainType.TURF else "Dirt")
+            slopes = slope_data.get(surface_key, [])
+            
+            current_distance = progress * self.race_distance
+            for (start_m, end_m, slope_pct) in slopes:
+                if start_m <= current_distance < end_m:
+                    if slope_pct > 0:
+                        state.current_terrain = "uphill"
+                        state.current_slope_percent = slope_pct
+                    elif slope_pct < 0:
+                        state.current_terrain = "downhill"
+                        state.current_slope_percent = slope_pct
+                    break
             else:
-                state.current_terrain = "straight"
-            state.is_in_corner = False
-            state.current_corner_number = 0
-        elif progress < 0.65:
-            state.current_terrain = "corner"
-            state.is_in_corner = True
-            state.current_corner_number = 3  # Third corner
-        elif progress < 0.75:
-            state.current_terrain = "straight"
-            state.is_in_corner = False
-            state.current_corner_number = 0
-        elif progress < 0.85:
-            state.current_terrain = "corner"  # Final turn
-            state.is_in_corner = True
-            state.current_corner_number = 4  # Fourth (final) corner - same as "Corner 4" skills
-        else:
-            state.current_terrain = "straight"  # Final straight
-            state.is_in_corner = False
-            state.current_corner_number = 0
+                state.current_slope_percent = 0.0
         
         # Track corners passed (for stats/debugging)
         if state.is_in_corner and not was_in_corner:

@@ -44,10 +44,17 @@ The Uma Racing Simulator includes:
 -   **Graphical user interface (GUI)**
 -   **A configuration generator for runners**
 -   **A modular, extensible project structure**
+-   **Harness Racing System** - European harness racing simulator with live visualization
+-   **Live Race Animation** - 30 FPS curved track rendering with real-time positions
+-   **Dynamic Commentary** - 200+ commentary lines with race events and incidents
+-   **17 European Tracks** - Authentic harness racing track layouts
+-   **154+ Races** - G1, G2, G3 flat racing + 67 international races + 16 harness races
+-   **559 Skills** - Complete skill database with unique and JP-exclusive skills
 
 Perfect for: - RP communities\
 - Organized events\
 - Hobby simulations\
+- Cross-genre racing experimentation\
 - Casual fun & storytelling
 
 ------------------------------------------------------------------------
@@ -84,6 +91,27 @@ UmaRacingProject/
 
 ------------------------------------------------------------------------
 
+## 🏇 Racing Systems
+
+### Flat Racing (Uma Musume)
+Traditional flat horse racing with 5 core stats: Speed, Stamina, Power, Guts, Wisdom.
+- **Races**: 154 total (25 G1, 29 G2, 33 G3, 67 international)
+- **Tracks**: 53 racecourses (17 JRA, 7 NAR Japan, 29 international)
+- **Skills**: 559 total (63 unique character skills, 15 JP-exclusive)
+- **Interface**: UmaRacingGUI.py, UmaConfigGenerator.py
+
+### Harness Racing (European Trotters)
+European harness racing with specialized 7-stat system for sulky-pulling mechanics.
+- **Races**: 16 major European harness races (Prix d'Amérique, Elitloppet, Oslo Grand Prix, etc.)
+- **Tracks**: 13 European harness tracks (Paris-Vincennes, Solvalla, Bjerke, etc.)
+- **Stats**: Pulling Power, Endurance, Gait Consistency, Heat Recovery, Start Acceleration, Temperament, Sulky Tolerance
+- **Horse Age**: 2-3 years (young trotters)
+- **Sulky Weight**: 700-850kg realistic equipment
+- **Interface**: HarnessRacingGUI.py, HarnessConfigGenerator.py
+- **Documentation**: See [HARNESS_RACING_README.md](src/HARNESS_RACING_README.md)
+
+------------------------------------------------------------------------
+
 ## 🚀 Quick Start
 
 For the **recommended stable experience**, use:
@@ -106,6 +134,36 @@ The `experimental/` directory includes ongoing prototypes featuring:
 
 These versions may include breaking changes or untested features.\
 Use only if you're comfortable with experimentation.
+
+------------------------------------------------------------------------
+
+## 🏇 Harness Racing System (v2.0)
+
+The harness racing system now features live race visualization matching the flat racing GUI:
+
+### New Features
+- **Live Race Animation** - 30 FPS smooth animation with curved tracks
+- **F1-Style Positions** - Real-time standings sidebar with gate colors
+- **Dynamic Commentary** - 200+ commentary lines for harness-specific events
+- **17 European Tracks** - Authentic layouts (Paris-Vincennes, Solvalla, Milan, etc.)
+- **Visual Indicators** - Gait breaks (red pulse), sulky carts, finish markers
+- **Dual Race Modes** - Live animated or instant simulation
+
+### Quick Start
+```bash
+cd src
+python HarnessRacingGUI.py
+```
+
+1. **Tab 1**: Generate 3-10 harness horses with 7-stat system
+2. **Tab 2**: Select from 16 major European harness races
+3. **Tab 3**: Click "Run Race (Live)" for animated race
+4. **Tab 4**: View results and save with commentary
+
+### Documentation
+- [HARNESS_GUI_ENHANCEMENTS.md](docs/HARNESS_GUI_ENHANCEMENTS.md) - Complete feature guide
+- [HARNESS_QUICK_START.md](docs/HARNESS_QUICK_START.md) - Quick reference
+- [VISUAL_ENHANCEMENTS.txt](docs/VISUAL_ENHANCEMENTS.txt) - Visual diagrams
 
 ------------------------------------------------------------------------
 

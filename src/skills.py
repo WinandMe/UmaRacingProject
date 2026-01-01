@@ -116,6 +116,10 @@ class SkillCondition:
     requires_overtaken: bool = False      # Being passed by another
     min_hp_percent: float = 0.0           # Minimum HP required
     remaining_distance: Optional[float] = None  # Specific distance remaining (e.g., 200m)
+    # Section-based triggers (NEW)
+    section_start: Optional[int] = None   # Trigger at section N (1-24)
+    section_end: Optional[int] = None     # End trigger at section N
+    corner_number: Optional[int] = None   # Specific corner (4 = final corner)
 
 
 @dataclass
@@ -130,6 +134,12 @@ class Skill:
     activation_chance: float = 1.0       # Base activation chance (affected by Wit)
     cooldown: float = 0.0                # Cooldown between activations
     icon: str = "⚡"                      # Display icon/emoji
+    # Skill classification (NEW)
+    is_unique: bool = False              # True for unique skills (固有スキル) - always 100% activation
+    is_inherited: bool = False           # True for inherited skills (継承スキル) - +5% activation bonus
+    is_evolved: bool = False             # True for evolved/awakened skills (進化スキル)
+    evolved_from: Optional[str] = None   # Original skill ID this evolved from
+    uma_specific: Optional[str] = None   # Uma name if this is their unique skill
 
 
 @dataclass
@@ -138,6 +148,23 @@ class ActiveSkill:
     skill: Skill
     remaining_duration: float
     effects_applied: bool = False
+
+
+# =============================================================================
+# SKILL CLASSIFICATION CONSTANTS
+# =============================================================================
+
+# Unique skills (固有スキル) - Character-specific, always activate when conditions met
+UNIQUE_SKILL_ACTIVATION_RATE = 1.0        # 100% activation rate
+UNIQUE_SKILL_EFFECT_MULTIPLIER = 1.2      # 20% stronger effects
+
+# Inherited skills (継承スキル) - From parents, slight activation bonus
+INHERITED_SKILL_ACTIVATION_BONUS = 0.05   # +5% activation rate
+INHERITED_SKILL_EFFECT_MULTIPLIER = 1.0   # Normal effects
+
+# Evolved skills (進化スキル/覚醒スキル) - Upgraded versions
+EVOLVED_SKILL_EFFECT_MULTIPLIER = 1.5     # 50% stronger effects
+EVOLVED_SKILL_DURATION_MULTIPLIER = 1.3   # 30% longer duration
 
 
 # =============================================================================
@@ -152,6 +179,31 @@ def register_skill(skill: Skill) -> Skill:
     """Register a skill in the database"""
     SKILLS_DATABASE[skill.id] = skill
     return skill
+
+
+def get_skill_activation_modifier(skill: Skill) -> float:
+    """Get activation rate modifier based on skill classification"""
+    if skill.is_unique:
+        return UNIQUE_SKILL_ACTIVATION_RATE
+    if skill.is_inherited:
+        return INHERITED_SKILL_ACTIVATION_BONUS
+    return 0.0
+
+
+def get_skill_effect_modifier(skill: Skill) -> float:
+    """Get effect multiplier based on skill classification"""
+    if skill.is_evolved:
+        return EVOLVED_SKILL_EFFECT_MULTIPLIER
+    if skill.is_unique:
+        return UNIQUE_SKILL_EFFECT_MULTIPLIER
+    return 1.0
+
+
+def get_skill_duration_modifier(skill: Skill) -> float:
+    """Get duration multiplier based on skill classification"""
+    if skill.is_evolved:
+        return EVOLVED_SKILL_DURATION_MULTIPLIER
+    return 1.0
 
 
 # -----------------------------------------------------------------------------
@@ -6351,6 +6403,1505 @@ def get_skill_categories() -> Dict[str, List[str]]:
     return {k: v for k, v in categories.items() if v}
 
 
+# =============================================================================
+# SAMPLE UNIQUE SKILLS (固有スキル) - Character-specific skills
+# =============================================================================
+# These always activate at 100% when conditions are met
+# Effects are 20% stronger than normal skills
+
+register_skill(Skill(
+    id="special_week_unique",
+    name="Winning Dream",
+    description="Unique skill of Special Week. Greatly increases velocity in the final stretch.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[SkillEffect(SkillEffectType.SPEED, 0.55, 4.0)],
+    condition=SkillCondition(phase=SkillTriggerPhase.LAST_SPURT),
+    activation_chance=1.0,
+    icon="🏆",
+    is_unique=True,
+    uma_specific="Special Week"
+))
+
+register_skill(Skill(
+    id="silence_suzuka_unique",
+    name="Silent Sprint",
+    description="Unique skill of Silence Suzuka. Greatly increases speed when leading mid-race.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[SkillEffect(SkillEffectType.SPEED, 0.50, 5.0)],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.MID,
+        position=SkillTriggerPosition.FRONT,
+        running_style=RunningStyleRequirement.FR
+    ),
+    activation_chance=1.0,
+    icon="🔇",
+    is_unique=True,
+    uma_specific="Silence Suzuka"
+))
+
+register_skill(Skill(
+    id="tokai_teio_unique",
+    name="Emperor's Majesty",
+    description="Unique skill of Tokai Teio. Greatly increases acceleration on the final corner.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[SkillEffect(SkillEffectType.ACCELERATION, 0.65, 3.5)],
+    condition=SkillCondition(
+        terrain=SkillTriggerTerrain.CORNER,
+        corner_number=4  # Final corner
+    ),
+    activation_chance=1.0,
+    icon="👑",
+    is_unique=True,
+    uma_specific="Tokai Teio"
+))
+
+register_skill(Skill(
+    id="rice_shower_unique",
+    name="Cursed Runner",
+    description="Unique skill of Rice Shower. Greatly increases velocity when chasing the leader in late race.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[SkillEffect(SkillEffectType.SPEED, 0.48, 4.5)],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        position=SkillTriggerPosition.MIDPACK
+    ),
+    activation_chance=1.0,
+    icon="🌧️",
+    is_unique=True,
+    uma_specific="Rice Shower"
+))
+
+
+# =============================================================================
+# COMPLETE UNIQUE SKILLS DATABASE (固有スキル) - All Uma Musume Characters
+# =============================================================================
+
+# --- Vodka ---
+register_skill(Skill(
+    id="vodka_unique",
+    name="Straight Line Demon",
+    description="Vodka's unique skill. Dramatically increases speed on the final straight.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[SkillEffect(SkillEffectType.SPEED, 0.52, 4.5)],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        terrain=SkillTriggerTerrain.STRAIGHT
+    ),
+    activation_chance=1.0,
+    icon="🍸",
+    is_unique=True,
+    uma_specific="Vodka"
+))
+
+# --- Daiwa Scarlet ---
+register_skill(Skill(
+    id="daiwa_scarlet_unique",
+    name="Scarlet Pride",
+    description="Daiwa Scarlet's unique skill. Greatly increases speed when competing neck and neck.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.45, 4.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.35, 4.0)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        requires_challenge=True
+    ),
+    activation_chance=1.0,
+    icon="🌹",
+    is_unique=True,
+    uma_specific="Daiwa Scarlet"
+))
+
+# --- Gold Ship ---
+register_skill(Skill(
+    id="gold_ship_unique",
+    name="Full Speed Ahead!",
+    description="Gold Ship's unique skill. Greatly increases speed when making a late surge from behind.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.50, 5.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.45, 5.0)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        position=SkillTriggerPosition.BACK,
+        running_style=RunningStyleRequirement.EC
+    ),
+    activation_chance=1.0,
+    icon="🚢",
+    is_unique=True,
+    uma_specific="Gold Ship"
+))
+
+# --- Mejiro McQueen ---
+register_skill(Skill(
+    id="mejiro_mcqueen_unique",
+    name="Immutable Nobility",
+    description="Mejiro McQueen's unique skill. Greatly increases speed when maintaining position.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[SkillEffect(SkillEffectType.SPEED, 0.48, 5.0)],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        running_style=RunningStyleRequirement.PC
+    ),
+    activation_chance=1.0,
+    icon="👸",
+    is_unique=True,
+    uma_specific="Mejiro McQueen"
+))
+
+# --- Oguri Cap ---
+register_skill(Skill(
+    id="oguri_cap_unique",
+    name="Unstoppable Will",
+    description="Oguri Cap's unique skill. Greatly increases speed and recovers stamina.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.48, 4.5),
+        SkillEffect(SkillEffectType.RECOVERY, 0.05, 0.0)
+    ],
+    condition=SkillCondition(phase=SkillTriggerPhase.LAST_SPURT),
+    activation_chance=1.0,
+    icon="🧢",
+    is_unique=True,
+    uma_specific="Oguri Cap"
+))
+
+# --- Grass Wonder ---
+register_skill(Skill(
+    id="grass_wonder_unique",
+    name="Wonder of the World",
+    description="Grass Wonder's unique skill. Greatly increases speed when surging from mid-pack.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[SkillEffect(SkillEffectType.SPEED, 0.50, 4.5)],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        position=SkillTriggerPosition.MIDPACK
+    ),
+    activation_chance=1.0,
+    icon="🌿",
+    is_unique=True,
+    uma_specific="Grass Wonder"
+))
+
+# --- El Condor Pasa ---
+register_skill(Skill(
+    id="el_condor_pasa_unique",
+    name="Condor's Flight",
+    description="El Condor Pasa's unique skill. Dramatically increases speed on the final straight.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.52, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.38, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        terrain=SkillTriggerTerrain.STRAIGHT
+    ),
+    activation_chance=1.0,
+    icon="🦅",
+    is_unique=True,
+    uma_specific="El Condor Pasa"
+))
+
+# --- Haru Urara ---
+register_skill(Skill(
+    id="haru_urara_unique",
+    name="Never Give Up!",
+    description="Haru Urara's unique skill. Greatly increases speed when far behind.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.55, 5.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.50, 5.0)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        position=SkillTriggerPosition.BACK
+    ),
+    activation_chance=1.0,
+    icon="🌸",
+    is_unique=True,
+    uma_specific="Haru Urara"
+))
+
+# --- Maruzensky ---
+register_skill(Skill(
+    id="maruzensky_unique",
+    name="Super Car",
+    description="Maruzensky's unique skill. Dramatically increases speed when escaping at the front.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.55, 5.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.45, 5.0)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.MID,
+        position=SkillTriggerPosition.FRONT,
+        running_style=RunningStyleRequirement.FR
+    ),
+    activation_chance=1.0,
+    icon="🏎️",
+    is_unique=True,
+    uma_specific="Maruzensky"
+))
+
+# --- Taiki Shuttle ---
+register_skill(Skill(
+    id="taiki_shuttle_unique",
+    name="Mile Legend",
+    description="Taiki Shuttle's unique skill. Dramatically increases speed in mile races.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[SkillEffect(SkillEffectType.SPEED, 0.55, 4.5)],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        race_type=RaceTypeRequirement.MILE
+    ),
+    activation_chance=1.0,
+    icon="🚀",
+    is_unique=True,
+    uma_specific="Taiki Shuttle"
+))
+
+# --- Twin Turbo ---
+register_skill(Skill(
+    id="twin_turbo_unique",
+    name="Turbo Engine",
+    description="Twin Turbo's unique skill. Dramatically increases speed when escaping early.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.58, 4.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.50, 4.0)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.EARLY,
+        position=SkillTriggerPosition.FRONT,
+        running_style=RunningStyleRequirement.FR
+    ),
+    activation_chance=1.0,
+    icon="💨",
+    is_unique=True,
+    uma_specific="Twin Turbo"
+))
+
+# --- Narita Brian ---
+register_skill(Skill(
+    id="narita_brian_unique",
+    name="Shadow of Assassin",
+    description="Narita Brian's unique skill. Greatly increases speed when overtaking on the final corner.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.50, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.42, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        terrain=SkillTriggerTerrain.CORNER,
+        requires_passing=True
+    ),
+    activation_chance=1.0,
+    icon="🗡️",
+    is_unique=True,
+    uma_specific="Narita Brian"
+))
+
+# --- Symboli Rudolf ---
+register_skill(Skill(
+    id="symboli_rudolf_unique",
+    name="Emperor's Dignity",
+    description="Symboli Rudolf's unique skill. Greatly increases speed when maintaining lead.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.48, 5.0),
+        SkillEffect(SkillEffectType.STAMINA_SAVE, 0.15, 5.0)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        position=SkillTriggerPosition.FRONT
+    ),
+    activation_chance=1.0,
+    icon="🏛️",
+    is_unique=True,
+    uma_specific="Symboli Rudolf"
+))
+
+# --- Sakura Bakushin O ---
+register_skill(Skill(
+    id="sakura_bakushin_o_unique",
+    name="Bakushin Power!",
+    description="Sakura Bakushin O's unique skill. Dramatically increases speed in sprint races.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.58, 4.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.52, 4.0)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        race_type=RaceTypeRequirement.SPRINT
+    ),
+    activation_chance=1.0,
+    icon="🌸",
+    is_unique=True,
+    uma_specific="Sakura Bakushin O"
+))
+
+# --- Kitasan Black ---
+register_skill(Skill(
+    id="kitasan_black_unique",
+    name="Song of Victory",
+    description="Kitasan Black's unique skill. Dramatically increases speed when leading.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.55, 5.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.50, 5.0)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        position=SkillTriggerPosition.FRONT
+    ),
+    activation_chance=1.0,
+    icon="🎤",
+    is_unique=True,
+    uma_specific="Kitasan Black"
+))
+
+# --- Satono Diamond ---
+register_skill(Skill(
+    id="satono_diamond_unique",
+    name="Diamond Sparkle",
+    description="Satono Diamond's unique skill. Greatly increases speed with dazzling acceleration.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.48, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.45, 4.5)
+    ],
+    condition=SkillCondition(phase=SkillTriggerPhase.LAST_SPURT),
+    activation_chance=1.0,
+    icon="💎",
+    is_unique=True,
+    uma_specific="Satono Diamond"
+))
+
+# --- Manhattan Cafe ---
+register_skill(Skill(
+    id="manhattan_cafe_unique",
+    name="Dark Surge",
+    description="Manhattan Cafe's unique skill. Greatly increases speed when surging from behind.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.52, 5.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.48, 5.0)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        position=SkillTriggerPosition.BACK,
+        running_style=RunningStyleRequirement.EC
+    ),
+    activation_chance=1.0,
+    icon="☕",
+    is_unique=True,
+    uma_specific="Manhattan Cafe"
+))
+
+# --- Agnes Tachyon ---
+register_skill(Skill(
+    id="agnes_tachyon_unique",
+    name="Speed of Light",
+    description="Agnes Tachyon's unique skill. Dramatically increases speed, breaking the limits.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.58, 4.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.55, 4.0)
+    ],
+    condition=SkillCondition(phase=SkillTriggerPhase.LAST_SPURT),
+    activation_chance=1.0,
+    icon="💡",
+    is_unique=True,
+    uma_specific="Agnes Tachyon"
+))
+
+# --- Smart Falcon ---
+register_skill(Skill(
+    id="smart_falcon_unique",
+    name="Falcon Sprint",
+    description="Smart Falcon's unique skill. Greatly increases speed on dirt tracks.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.55, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.48, 4.5)
+    ],
+    condition=SkillCondition(phase=SkillTriggerPhase.LAST_SPURT),
+    activation_chance=1.0,
+    icon="🦅",
+    is_unique=True,
+    uma_specific="Smart Falcon"
+))
+
+# --- Copano Rickey ---
+register_skill(Skill(
+    id="copano_rickey_unique",
+    name="Dirt Emperor",
+    description="Copano Rickey's unique skill. Dramatically increases speed on dirt tracks.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.55, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.50, 4.5)
+    ],
+    condition=SkillCondition(phase=SkillTriggerPhase.LAST_SPURT),
+    activation_chance=1.0,
+    icon="👑",
+    is_unique=True,
+    uma_specific="Copano Rickey"
+))
+
+# --- Meisho Doto ---
+register_skill(Skill(
+    id="meisho_doto_unique",
+    name="Raging Storm",
+    description="Meisho Doto's unique skill. Greatly increases speed when surging from behind.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.50, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.45, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        terrain=SkillTriggerTerrain.CORNER,
+        position=SkillTriggerPosition.BACK
+    ),
+    activation_chance=1.0,
+    icon="🌊",
+    is_unique=True,
+    uma_specific="Meisho Doto"
+))
+
+# --- Air Groove ---
+register_skill(Skill(
+    id="air_groove_unique",
+    name="Elegant Groove",
+    description="Air Groove's unique skill. Greatly increases speed with elegant running.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.48, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.42, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        running_style=RunningStyleRequirement.PC
+    ),
+    activation_chance=1.0,
+    icon="💃",
+    is_unique=True,
+    uma_specific="Air Groove"
+))
+
+# --- Seiun Sky ---
+register_skill(Skill(
+    id="seiun_sky_unique",
+    name="Sky's Leap",
+    description="Seiun Sky's unique skill. Dramatically increases speed when escaping.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.55, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.50, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.MID,
+        position=SkillTriggerPosition.FRONT,
+        running_style=RunningStyleRequirement.FR
+    ),
+    activation_chance=1.0,
+    icon="☁️",
+    is_unique=True,
+    uma_specific="Seiun Sky"
+))
+
+# --- King Halo ---
+register_skill(Skill(
+    id="king_halo_unique",
+    name="Halo's Blessing",
+    description="King Halo's unique skill. Greatly increases speed with divine light.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.48, 4.5),
+        SkillEffect(SkillEffectType.RECOVERY, 0.03, 0.0)
+    ],
+    condition=SkillCondition(phase=SkillTriggerPhase.LAST_SPURT),
+    activation_chance=1.0,
+    icon="👑",
+    is_unique=True,
+    uma_specific="King Halo"
+))
+
+# --- T.M. Opera O ---
+register_skill(Skill(
+    id="tm_opera_o_unique",
+    name="Opera's Grand Finale",
+    description="T.M. Opera O's unique skill. Dramatically increases speed in the final act.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.55, 5.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.50, 5.0)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        running_style=RunningStyleRequirement.PC
+    ),
+    activation_chance=1.0,
+    icon="🎭",
+    is_unique=True,
+    uma_specific="T.M. Opera O"
+))
+
+# --- Admire Vega ---
+register_skill(Skill(
+    id="admire_vega_unique",
+    name="Vega's Star",
+    description="Admire Vega's unique skill. Greatly increases speed like a shooting star.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.50, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.45, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        terrain=SkillTriggerTerrain.STRAIGHT
+    ),
+    activation_chance=1.0,
+    icon="⭐",
+    is_unique=True,
+    uma_specific="Admire Vega"
+))
+
+# --- Narita Taishin ---
+register_skill(Skill(
+    id="narita_taishin_unique",
+    name="Taishin's Conviction",
+    description="Narita Taishin's unique skill. Greatly increases speed with pure determination.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.50, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.48, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        requires_passing=True
+    ),
+    activation_chance=1.0,
+    icon="💪",
+    is_unique=True,
+    uma_specific="Narita Taishin"
+))
+
+# --- Winning Ticket ---
+register_skill(Skill(
+    id="winning_ticket_unique",
+    name="Winning Chance",
+    description="Winning Ticket's unique skill. Greatly increases speed with winning spirit.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.48, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.42, 4.5)
+    ],
+    condition=SkillCondition(phase=SkillTriggerPhase.LAST_SPURT),
+    activation_chance=1.0,
+    icon="🎫",
+    is_unique=True,
+    uma_specific="Winning Ticket"
+))
+
+# --- Biwa Hayahide ---
+register_skill(Skill(
+    id="biwa_hayahide_unique",
+    name="Professor's Calculation",
+    description="Biwa Hayahide's unique skill. Greatly increases speed with calculated precision.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.50, 5.0),
+        SkillEffect(SkillEffectType.STAMINA_SAVE, 0.12, 5.0)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        running_style=RunningStyleRequirement.PC
+    ),
+    activation_chance=1.0,
+    icon="📖",
+    is_unique=True,
+    uma_specific="Biwa Hayahide"
+))
+
+# --- Mayano Top Gun ---
+register_skill(Skill(
+    id="mayano_top_gun_unique",
+    name="Top Gun's Assault",
+    description="Mayano Top Gun's unique skill. Dramatically increases speed with aerial assault.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.52, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.48, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        requires_passing=True
+    ),
+    activation_chance=1.0,
+    icon="✈️",
+    is_unique=True,
+    uma_specific="Mayano Top Gun"
+))
+
+# --- Zenno Rob Roy ---
+register_skill(Skill(
+    id="zenno_rob_roy_unique",
+    name="Outlaw's Freedom",
+    description="Zenno Rob Roy's unique skill. Greatly increases speed with fearless running.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.50, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.45, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        terrain=SkillTriggerTerrain.CORNER
+    ),
+    activation_chance=1.0,
+    icon="🏴",
+    is_unique=True,
+    uma_specific="Zenno Rob Roy"
+))
+
+# --- Fine Motion ---
+register_skill(Skill(
+    id="fine_motion_unique",
+    name="Motion Picture",
+    description="Fine Motion's unique skill. Greatly increases speed with graceful movement.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.48, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.42, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        running_style=RunningStyleRequirement.PC
+    ),
+    activation_chance=1.0,
+    icon="🎬",
+    is_unique=True,
+    uma_specific="Fine Motion"
+))
+
+# --- Jungle Pocket ---
+register_skill(Skill(
+    id="jungle_pocket_unique",
+    name="Jungle Force",
+    description="Jungle Pocket's unique skill. Dramatically increases speed with raw power.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.52, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.48, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        requires_challenge=True
+    ),
+    activation_chance=1.0,
+    icon="🌴",
+    is_unique=True,
+    uma_specific="Jungle Pocket"
+))
+
+# --- Agnes Digital ---
+register_skill(Skill(
+    id="agnes_digital_unique",
+    name="Digital Processing",
+    description="Agnes Digital's unique skill. Dramatically increases speed with digital precision.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.52, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.50, 4.5)
+    ],
+    condition=SkillCondition(phase=SkillTriggerPhase.LAST_SPURT),
+    activation_chance=1.0,
+    icon="💻",
+    is_unique=True,
+    uma_specific="Agnes Digital"
+))
+
+# --- Curren Chan ---
+register_skill(Skill(
+    id="curren_chan_unique",
+    name="Curren's Flow",
+    description="Curren Chan's unique skill. Greatly increases speed with steady pace.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.48, 4.5),
+        SkillEffect(SkillEffectType.STAMINA_SAVE, 0.10, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        running_style=RunningStyleRequirement.PC
+    ),
+    activation_chance=1.0,
+    icon="💧",
+    is_unique=True,
+    uma_specific="Curren Chan"
+))
+
+# --- Tamamo Cross ---
+register_skill(Skill(
+    id="tamamo_cross_unique",
+    name="Cross Counter",
+    description="Tamamo Cross's unique skill. Dramatically increases speed with counterattack.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.52, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.48, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        position=SkillTriggerPosition.MIDPACK,
+        requires_passing=True
+    ),
+    activation_chance=1.0,
+    icon="✨",
+    is_unique=True,
+    uma_specific="Tamamo Cross"
+))
+
+# --- Duramente ---
+register_skill(Skill(
+    id="duramente_unique",
+    name="Duramente's Force",
+    description="Duramente's unique skill. Dramatically increases speed with overwhelming power.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.55, 5.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.52, 5.0)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        running_style=RunningStyleRequirement.PC
+    ),
+    activation_chance=1.0,
+    icon="⚡",
+    is_unique=True,
+    uma_specific="Duramente"
+))
+
+# --- Mihono Bourbon ---
+register_skill(Skill(
+    id="mihono_bourbon_unique",
+    name="Cyborg Sprint",
+    description="Mihono Bourbon's unique skill. Dramatically increases speed with machine-like precision.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.55, 4.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.50, 4.0)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.MID,
+        position=SkillTriggerPosition.FRONT,
+        running_style=RunningStyleRequirement.FR
+    ),
+    activation_chance=1.0,
+    icon="🤖",
+    is_unique=True,
+    uma_specific="Mihono Bourbon"
+))
+
+# --- Nice Nature ---
+register_skill(Skill(
+    id="nice_nature_unique",
+    name="Nice and Steady",
+    description="Nice Nature's unique skill. Greatly increases speed with consistent performance.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.45, 5.0),
+        SkillEffect(SkillEffectType.STAMINA_SAVE, 0.12, 5.0)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        position=SkillTriggerPosition.MIDPACK
+    ),
+    activation_chance=1.0,
+    icon="😊",
+    is_unique=True,
+    uma_specific="Nice Nature"
+))
+
+# --- Super Creek ---
+register_skill(Skill(
+    id="super_creek_unique",
+    name="Creek's Flow",
+    description="Super Creek's unique skill. Greatly increases stamina efficiency.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.STAMINA_SAVE, 0.18, 6.0),
+        SkillEffect(SkillEffectType.SPEED, 0.35, 6.0)
+    ],
+    condition=SkillCondition(phase=SkillTriggerPhase.MID),
+    activation_chance=1.0,
+    icon="🌊",
+    is_unique=True,
+    uma_specific="Super Creek"
+))
+
+# --- Ines Fujin ---
+register_skill(Skill(
+    id="ines_fujin_unique",
+    name="Wind God's Blessing",
+    description="Ines Fujin's unique skill. Dramatically increases speed with divine wind.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.52, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.48, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        terrain=SkillTriggerTerrain.STRAIGHT
+    ),
+    activation_chance=1.0,
+    icon="🌬️",
+    is_unique=True,
+    uma_specific="Ines Fujin"
+))
+
+# --- Sweep Tosho ---
+register_skill(Skill(
+    id="sweep_tosho_unique",
+    name="Sweeping Victory",
+    description="Sweep Tosho's unique skill. Dramatically increases speed in the final stretch.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.50, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.45, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        terrain=SkillTriggerTerrain.STRAIGHT
+    ),
+    activation_chance=1.0,
+    icon="🧹",
+    is_unique=True,
+    uma_specific="Sweep Tosho"
+))
+
+# --- Yaeno Muteki ---
+register_skill(Skill(
+    id="yaeno_muteki_unique",
+    name="Invincible Spirit",
+    description="Yaeno Muteki's unique skill. Greatly increases speed with indomitable spirit.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.50, 4.5),
+        SkillEffect(SkillEffectType.RECOVERY, 0.03, 0.0)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        requires_challenge=True
+    ),
+    activation_chance=1.0,
+    icon="🛡️",
+    is_unique=True,
+    uma_specific="Yaeno Muteki"
+))
+
+# --- Eishin Flash ---
+register_skill(Skill(
+    id="eishin_flash_unique",
+    name="Flash Strike",
+    description="Eishin Flash's unique skill. Dramatically increases speed with lightning fast burst.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.55, 4.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.52, 4.0)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        terrain=SkillTriggerTerrain.STRAIGHT
+    ),
+    activation_chance=1.0,
+    icon="⚡",
+    is_unique=True,
+    uma_specific="Eishin Flash"
+))
+
+# --- Seeking the Pearl ---
+register_skill(Skill(
+    id="seeking_the_pearl_unique",
+    name="Pearl Discovery",
+    description="Seeking the Pearl's unique skill. Greatly increases speed when finding the gap.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.48, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.42, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        requires_passing=True
+    ),
+    activation_chance=1.0,
+    icon="🦪",
+    is_unique=True,
+    uma_specific="Seeking the Pearl"
+))
+
+# --- Matikanetannahauser ---
+register_skill(Skill(
+    id="matikanetannahauser_unique",
+    name="Tannhauser Gate",
+    description="Matikanetannahauser's unique skill. Dramatically increases speed in long races.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.52, 5.0),
+        SkillEffect(SkillEffectType.STAMINA_SAVE, 0.15, 5.0)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        race_type=RaceTypeRequirement.LONG
+    ),
+    activation_chance=1.0,
+    icon="🚪",
+    is_unique=True,
+    uma_specific="Matikanetannahauser"
+))
+
+# --- Narita Top Road ---
+register_skill(Skill(
+    id="narita_top_road_unique",
+    name="Top Road",
+    description="Narita Top Road's unique skill. Greatly increases speed on the best path.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.48, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.45, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        position=SkillTriggerPosition.FRONT
+    ),
+    activation_chance=1.0,
+    icon="🛤️",
+    is_unique=True,
+    uma_specific="Narita Top Road"
+))
+
+# --- Sakura Chiyono O ---
+register_skill(Skill(
+    id="sakura_chiyono_o_unique",
+    name="Eternal Sakura",
+    description="Sakura Chiyono O's unique skill. Greatly increases speed with timeless grace.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.50, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.45, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        running_style=RunningStyleRequirement.EC
+    ),
+    activation_chance=1.0,
+    icon="🌸",
+    is_unique=True,
+    uma_specific="Sakura Chiyono O"
+))
+
+# --- Daiichi Ruby ---
+register_skill(Skill(
+    id="daiichi_ruby_unique",
+    name="Ruby Sparkle",
+    description="Daiichi Ruby's unique skill. Greatly increases speed with gem-like brilliance.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.48, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.45, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        race_type=RaceTypeRequirement.SPRINT
+    ),
+    activation_chance=1.0,
+    icon="💎",
+    is_unique=True,
+    uma_specific="Daiichi Ruby"
+))
+
+# --- Nishino Flower ---
+register_skill(Skill(
+    id="nishino_flower_unique",
+    name="Flower Bloom",
+    description="Nishino Flower's unique skill. Greatly increases speed with blooming spirit.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.48, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.42, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        running_style=RunningStyleRequirement.PC
+    ),
+    activation_chance=1.0,
+    icon="🌺",
+    is_unique=True,
+    uma_specific="Nishino Flower"
+))
+
+
+# =============================================================================
+# JP-EXCLUSIVE SKILLS (日本版専用スキル)
+# =============================================================================
+
+# --- Scenario-Specific Skills ---
+register_skill(Skill(
+    id="aoharu_burst",
+    name="Aoharu Burst",
+    description="JP: Aoharu scenario skill. Greatly increases speed with team spirit.",
+    rarity=SkillRarity.GOLD,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.42, 4.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.35, 4.0)
+    ],
+    condition=SkillCondition(phase=SkillTriggerPhase.LAST_SPURT),
+    icon="💙"
+))
+
+register_skill(Skill(
+    id="climax_domination",
+    name="Climax Domination",
+    description="JP: Climax scenario skill. Dramatically increases speed in climax races.",
+    rarity=SkillRarity.GOLD,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.48, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.42, 4.5)
+    ],
+    condition=SkillCondition(phase=SkillTriggerPhase.LAST_SPURT),
+    icon="🔥"
+))
+
+register_skill(Skill(
+    id="grand_masters_pride",
+    name="Grand Masters Pride",
+    description="JP: Grand Masters scenario skill. Greatly increases speed with veteran wisdom.",
+    rarity=SkillRarity.GOLD,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.45, 4.5),
+        SkillEffect(SkillEffectType.STAMINA_SAVE, 0.12, 4.5)
+    ],
+    condition=SkillCondition(phase=SkillTriggerPhase.LATE),
+    icon="🏆"
+))
+
+register_skill(Skill(
+    id="make_a_new_track",
+    name="Make a New Track!!",
+    description="JP: Make a New Track scenario skill. Creates new possibilities.",
+    rarity=SkillRarity.GOLD,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.45, 4.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.40, 4.0)
+    ],
+    condition=SkillCondition(phase=SkillTriggerPhase.LAST_SPURT),
+    icon="🎵"
+))
+
+# --- L'Arc Scenario Skills ---
+register_skill(Skill(
+    id="larc_arc_de_triomphe",
+    name="L'Arc Spirit",
+    description="JP: L'Arc scenario skill. Greatly increases speed when racing in France.",
+    rarity=SkillRarity.GOLD,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.50, 5.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.45, 5.0)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        race_type=RaceTypeRequirement.MEDIUM
+    ),
+    icon="🇫🇷"
+))
+
+register_skill(Skill(
+    id="larc_victory",
+    name="L'Arc Victory",
+    description="JP: L'Arc scenario skill. Dramatically increases speed aiming for victory.",
+    rarity=SkillRarity.GOLD,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.52, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.48, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        requires_challenge=True
+    ),
+    icon="🏆"
+))
+
+# --- Event-Limited Skills ---
+register_skill(Skill(
+    id="valentine_heart",
+    name="Valentine Heart",
+    description="JP: Valentine event skill. Increases speed with love.",
+    rarity=SkillRarity.GOLD,
+    effects=[SkillEffect(SkillEffectType.SPEED, 0.38, 3.5)],
+    condition=SkillCondition(phase=SkillTriggerPhase.LAST_SPURT),
+    icon="💝"
+))
+
+register_skill(Skill(
+    id="christmas_miracle",
+    name="Christmas Miracle",
+    description="JP: Christmas event skill. Increases speed with holiday spirit.",
+    rarity=SkillRarity.GOLD,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.40, 3.5),
+        SkillEffect(SkillEffectType.RECOVERY, 0.02, 0.0)
+    ],
+    condition=SkillCondition(phase=SkillTriggerPhase.LATE),
+    icon="🎄"
+))
+
+register_skill(Skill(
+    id="summer_festival",
+    name="Summer Festival",
+    description="JP: Summer event skill. Increases speed with summer energy.",
+    rarity=SkillRarity.GOLD,
+    effects=[SkillEffect(SkillEffectType.SPEED, 0.40, 3.5)],
+    condition=SkillCondition(phase=SkillTriggerPhase.LAST_SPURT),
+    icon="🎆"
+))
+
+register_skill(Skill(
+    id="new_year_blessing",
+    name="New Year Blessing",
+    description="JP: New Year event skill. Increases speed with new year fortune.",
+    rarity=SkillRarity.GOLD,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.38, 3.5),
+        SkillEffect(SkillEffectType.STAMINA_SAVE, 0.08, 3.5)
+    ],
+    condition=SkillCondition(phase=SkillTriggerPhase.MID),
+    icon="🎍"
+))
+
+# --- Anniversary Skills ---
+register_skill(Skill(
+    id="anniversary_celebration",
+    name="Anniversary Celebration",
+    description="JP: Anniversary skill. Greatly increases speed in celebration.",
+    rarity=SkillRarity.GOLD,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.45, 4.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.40, 4.0)
+    ],
+    condition=SkillCondition(phase=SkillTriggerPhase.LAST_SPURT),
+    icon="🎉"
+))
+
+register_skill(Skill(
+    id="halloween_spirit",
+    name="Halloween Spirit",
+    description="JP: Halloween event skill. Increases speed with Halloween energy.",
+    rarity=SkillRarity.GOLD,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.40, 3.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.35, 3.5)
+    ],
+    condition=SkillCondition(phase=SkillTriggerPhase.LATE),
+    icon="🎃"
+))
+
+register_skill(Skill(
+    id="white_day_blessing",
+    name="White Day Blessing",
+    description="JP: White Day event skill. Increases speed with spring blessing.",
+    rarity=SkillRarity.GOLD,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.38, 3.5),
+        SkillEffect(SkillEffectType.RECOVERY, 0.02, 0.0)
+    ],
+    condition=SkillCondition(phase=SkillTriggerPhase.MID),
+    icon="🌷"
+))
+
+register_skill(Skill(
+    id="cinderella_glass",
+    name="Cinderella Glass (Collab)",
+    description="JP: Cinderella Glass collab skill. Increases speed with magical pumpkin.",
+    rarity=SkillRarity.GOLD,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.48, 4.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.42, 4.0)
+    ],
+    condition=SkillCondition(phase=SkillTriggerPhase.LAST_SPURT),
+    icon="🎪"
+))
+
+register_skill(Skill(
+    id="uaf_champion",
+    name="UAF Champion",
+    description="JP: Uma Association Championship skill. Ultimate racing spirit.",
+    rarity=SkillRarity.GOLD,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.50, 5.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.48, 5.0),
+        SkillEffect(SkillEffectType.STAMINA_SAVE, 0.10, 5.0)
+    ],
+    condition=SkillCondition(phase=SkillTriggerPhase.LAST_SPURT),
+    icon="🏅"
+))
+
+# --- More Unique Skills for Additional Characters ---
+
+register_skill(Skill(
+    id="mejiro_ryan_unique",
+    name="Ryan's Pride",
+    description="Mejiro Ryan's unique skill. Greatly increases speed with Irish spirit.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.50, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.45, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        running_style=RunningStyleRequirement.PC
+    ),
+    activation_chance=1.0,
+    icon="🍀",
+    is_unique=True,
+    uma_specific="Mejiro Ryan"
+))
+
+register_skill(Skill(
+    id="mejiro_molotov_unique",
+    name="Molotov Break",
+    description="Mejiro Molotov's unique skill. Dramatically increases speed with explosive power.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.55, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.52, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        position=SkillTriggerPosition.FRONT
+    ),
+    activation_chance=1.0,
+    icon="💣",
+    is_unique=True,
+    uma_specific="Mejiro Molotov"
+))
+
+register_skill(Skill(
+    id="gold_city_unique",
+    name="City Lights",
+    description="Gold City's unique skill. Increases speed with metropolitan spirit.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.48, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.42, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        running_style=RunningStyleRequirement.PC
+    ),
+    activation_chance=1.0,
+    icon="🌃",
+    is_unique=True,
+    uma_specific="Gold City"
+))
+
+register_skill(Skill(
+    id="mejiro_ardan_unique",
+    name="Ardan's Charge",
+    description="Mejiro Ardan's unique skill. Dramatically increases speed with noble charge.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.52, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.50, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        position=SkillTriggerPosition.MIDPACK,
+        requires_passing=True
+    ),
+    activation_chance=1.0,
+    icon="⚔️",
+    is_unique=True,
+    uma_specific="Mejiro Ardan"
+))
+
+register_skill(Skill(
+    id="tosen_jordan_unique",
+    name="Jordan's Flight",
+    description="Tosen Jordan's unique skill. Greatly increases speed in the final stretch.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.50, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.48, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        terrain=SkillTriggerTerrain.STRAIGHT
+    ),
+    activation_chance=1.0,
+    icon="✈️",
+    is_unique=True,
+    uma_specific="Tosen Jordan"
+))
+
+register_skill(Skill(
+    id="fine_motion_light_unique",
+    name="Light Footwork",
+    description="Fine Motion Light's unique skill. Greatly increases speed with fluid motion.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.48, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.45, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        running_style=RunningStyleRequirement.LS
+    ),
+    activation_chance=1.0,
+    icon="💫",
+    is_unique=True,
+    uma_specific="Fine Motion Light"
+))
+
+register_skill(Skill(
+    id="silence_suzuka_2_unique",
+    name="Eternal Silence",
+    description="Silence Suzuka (Derived)'s unique skill. Ultimate speed with eternal silence.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.58, 5.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.55, 5.0)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        running_style=RunningStyleRequirement.PC
+    ),
+    activation_chance=1.0,
+    icon="🔇",
+    is_unique=True,
+    uma_specific="Silence Suzuka (Derived)"
+))
+
+register_skill(Skill(
+    id="mejiro_dober_unique",
+    name="Dober's Sprint",
+    description="Mejiro Dober's unique skill. Dramatically increases speed in burst runs.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.52, 4.0),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.50, 4.0)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LAST_SPURT,
+        running_style=RunningStyleRequirement.EC
+    ),
+    activation_chance=1.0,
+    icon="🐕",
+    is_unique=True,
+    uma_specific="Mejiro Dober"
+))
+
+register_skill(Skill(
+    id="water_sprite_unique",
+    name="Water Spirit",
+    description="Water Sprite's unique skill. Increases speed with water's flow.",
+    rarity=SkillRarity.UNIQUE,
+    effects=[
+        SkillEffect(SkillEffectType.SPEED, 0.48, 4.5),
+        SkillEffect(SkillEffectType.ACCELERATION, 0.42, 4.5)
+    ],
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.LATE,
+        running_style=RunningStyleRequirement.LS
+    ),
+    activation_chance=1.0,
+    icon="💦",
+    is_unique=True,
+    uma_specific="Water Sprite"
+))
+
+
+# =============================================================================
+# SAMPLE EVOLVED SKILLS (進化スキル) - Awakened versions of existing skills
+# =============================================================================
+# These have 50% stronger effects and 30% longer duration
+
+register_skill(Skill(
+    id="straightaway_adept_evolved",
+    name="Straightaway Mastery",
+    description="Evolved version: Significantly increase velocity on a straight.",
+    rarity=SkillRarity.EVOLUTION,
+    effects=[SkillEffect(SkillEffectType.SPEED, 0.25, 4.0)],
+    condition=SkillCondition(terrain=SkillTriggerTerrain.STRAIGHT),
+    icon="⚡➡️",
+    is_evolved=True,
+    evolved_from="straightaway_adept"
+))
+
+register_skill(Skill(
+    id="corner_adept_evolved",
+    name="Corner Mastery",
+    description="Evolved version: Significantly increase velocity on a corner.",
+    rarity=SkillRarity.EVOLUTION,
+    effects=[SkillEffect(SkillEffectType.SPEED, 0.25, 3.2)],
+    condition=SkillCondition(terrain=SkillTriggerTerrain.CORNER),
+    icon="⚡↩️",
+    is_evolved=True,
+    evolved_from="corner_adept"
+))
+
+register_skill(Skill(
+    id="homestretch_haste_evolved",
+    name="Homestretch Domination",
+    description="Evolved version: Greatly increase velocity in the last spurt.",
+    rarity=SkillRarity.EVOLUTION,
+    effects=[SkillEffect(SkillEffectType.SPEED, 0.35, 4.5)],
+    condition=SkillCondition(phase=SkillTriggerPhase.LAST_SPURT),
+    icon="⚡🏁",
+    is_evolved=True,
+    evolved_from="homestretch_haste"
+))
+
+
+# =============================================================================
+# SAMPLE INHERITED SKILLS (継承スキル) - Skills passed from parent builds
+# =============================================================================
+# These get +5% activation bonus
+
+register_skill(Skill(
+    id="inherited_endurance",
+    name="Inherited Endurance",
+    description="An inherited skill from a champion. Recover stamina when positioned in the pack.",
+    rarity=SkillRarity.GOLD,
+    effects=[SkillEffect(SkillEffectType.RECOVERY, 0.04, 0.0)],  # Instant 4% recovery
+    condition=SkillCondition(
+        phase=SkillTriggerPhase.MID,
+        position=SkillTriggerPosition.MIDPACK
+    ),
+    icon="🧬",
+    is_inherited=True
+))
+
+register_skill(Skill(
+    id="inherited_speed_burst",
+    name="Inherited Speed Gene",
+    description="An inherited skill granting a speed burst in the final sections.",
+    rarity=SkillRarity.GOLD,
+    effects=[SkillEffect(SkillEffectType.SPEED, 0.30, 3.0)],
+    condition=SkillCondition(
+        section_start=20,  # Sections 20-24 (late race)
+        section_end=24
+    ),
+    icon="🧬",
+    is_inherited=True
+))
+
+
 # Export commonly needed items
 __all__ = [
     'Skill', 'SkillEffect', 'SkillCondition', 'ActiveSkill',
@@ -6360,4 +7911,9 @@ __all__ = [
     'SKILLS_DATABASE', 'get_skill_by_id', 'get_all_skill_ids',
     'get_skills_by_rarity', 'get_skills_by_running_style',
     'get_skills_by_race_type', 'get_skill_categories',
+    # NEW exports
+    'get_skill_activation_modifier', 'get_skill_effect_modifier', 'get_skill_duration_modifier',
+    'UNIQUE_SKILL_ACTIVATION_RATE', 'INHERITED_SKILL_ACTIVATION_BONUS',
+    'UNIQUE_SKILL_EFFECT_MULTIPLIER', 'EVOLVED_SKILL_EFFECT_MULTIPLIER',
+    'EVOLVED_SKILL_DURATION_MULTIPLIER',
 ]
