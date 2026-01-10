@@ -1,0 +1,3 @@
+Canvas: 955x577, Track area: 945x567
+width_ratio: 1.6, canvas_ratio: 1.67
+Final oval: 907x567

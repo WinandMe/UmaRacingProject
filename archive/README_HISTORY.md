@@ -24,19 +24,16 @@ This directory contains historical versions of the Uma Racing Project for refere
   - adding better cornering mechanism to the sim
   - track indicator still straight, might implement it later
 
-## 🚀 Version Evolution
+### `/spec_1_upt/` - Major changes with PySide6
 
-### Generation 1 (Archived)
-- **UmaRacing.py (Base) → UmaRacingGUI_Original.py → UmaRacingGUI_V2.py**
+- **UmaRacingGUI_SP1.py** - The Main App
+  - curved tracks implemented 
+  - commentaries
+  - skills
+  - live position standing sidebar
+  - Python engine overhauls
 
-### Generation 2 (Current Stable - in `/src/`)
-- **UmaRacingGUI_V3.py** - Major GUI overhaul of race indicators
-- **Most tested and reliable version**
-- Used extensively for race simulations
 
-### Generation 3 (Experimental - in `/experimental/`)
-- V4 series with completely overhauled racing mechanisms
-- New config generator system with skill management
 
 ## 🔄 Compatibility Notes
 
