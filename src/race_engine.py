@@ -1176,8 +1176,8 @@ SKILL_CONDITION_BONUS = 0.1           # +10% when conditions are perfect
 # HP restoration skill effects
 
 RECOVERY_BASE_AMOUNT = 0.03           # Base 3% HP recovery
-RECOVERY_STAMINA_FACTOR = 0.00005     # Stamina stat bonus to recovery
-RECOVERY_MAX_AMOUNT = 0.15            # Max 15% HP recovery per skill
+RECOVERY_STAMINA_FACTOR = 0.0001     # Stamina stat bonus to recovery
+RECOVERY_MAX_AMOUNT = 0.30           # Max 15% HP recovery per skill
 
 
 # =============================================================================
@@ -1195,11 +1195,11 @@ DEBUFF_DURATION_REDUCTION = 0.3       # 30% duration reduction with high resista
 # =============================================================================
 # Cumulative tiredness affecting late-race performance
 
-FATIGUE_ACCUMULATION_RATE = 0.001     # Fatigue gain per second of high effort
+FATIGUE_ACCUMULATION_RATE = 0.0001    # Fatigue gain per second of high effort
 FATIGUE_THRESHOLD = 0.3               # Fatigue level where penalties start
-FATIGUE_SPEED_PENALTY = 0.05          # Max 5% speed penalty at full fatigue
-FATIGUE_ACCEL_PENALTY = 0.08          # Max 8% accel penalty at full fatigue
-FATIGUE_RECOVERY_RATE = 0.0005        # Fatigue recovery when coasting
+FATIGUE_SPEED_PENALTY = 0.03          # Max 5% speed penalty at full fatigue
+FATIGUE_ACCEL_PENALTY = 0.05          # Max 8% accel penalty at full fatigue
+FATIGUE_RECOVERY_RATE = 0.001         # Fatigue recovery when coasting
 
 
 # =============================================================================
